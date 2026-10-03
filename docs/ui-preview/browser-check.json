@@ -1,0 +1,40 @@
+{
+  "results": [
+    {
+      "route": "overview",
+      "status": 200,
+      "desktopOverflow": false,
+      "mobileOverflow": false
+    },
+    {
+      "route": "themes",
+      "status": 200,
+      "desktopOverflow": false,
+      "mobileOverflow": false
+    },
+    {
+      "route": "reports",
+      "status": 200,
+      "desktopOverflow": false,
+      "mobileOverflow": false
+    },
+    {
+      "route": "settings",
+      "status": 200,
+      "desktopOverflow": false,
+      "mobileOverflow": false
+    }
+  ],
+  "errors": [],
+  "checks": [
+    "mock labels",
+    "four routes",
+    "desktop/mobile overflow",
+    "keyboard details interaction",
+    "settings dialog + Escape",
+    "theme filter/search/reset",
+    "temporary edits + restore",
+    "disabled persistence",
+    "report source switch + definitions"
+  ]
+}

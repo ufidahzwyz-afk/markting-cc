@@ -1,0 +1,22 @@
+{
+  "name": "boran-marketing-ops",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24 <25", "npm": ">=11 <12" },
+  "packageManager": "npm@11.9.0",
+  "workspaces": ["apps/ops", "packages/ui"],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build --workspace @boran/ops",
+    "typecheck": "node scripts/typecheck.mjs",
+    "test": "node scripts/test.mjs",
+    "check": "npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3",
+    "tsx": "4.20.6",
+    "@electric-sql/pglite": "0.3.14"
+  }
+}
