@@ -1,0 +1,179 @@
+{
+  "testedAt": "2026-10-03T15:25:00.454Z",
+  "url": "http://localhost:3000/reports",
+  "desktop": {
+    "width": 1440,
+    "height": 1000
+  },
+  "mobile": {
+    "width": 390,
+    "height": 844
+  },
+  "passed": 12,
+  "failed": 0,
+  "results": [
+    {
+      "name": "default-mock-summary",
+      "passed": true,
+      "evidence": {
+        "kpis": [
+          "¥220.00",
+          "2,200",
+          "110",
+          "9"
+        ],
+        "tableRows": 4,
+        "chartBars": 2
+      }
+    },
+    {
+      "name": "date-window-changes-summary-and-chart",
+      "passed": true,
+      "evidence": {
+        "first": [
+          100,
+          1000,
+          50,
+          4
+        ],
+        "second": [
+          120,
+          1200,
+          60,
+          5
+        ],
+        "full": [
+          220,
+          2200,
+          110,
+          9
+        ]
+      }
+    },
+    {
+      "name": "trend-metric-and-tooltip",
+      "passed": true,
+      "evidence": {
+        "hoveredDate": "2026-09-30",
+        "clicks": 50
+      }
+    },
+    {
+      "name": "missing-channel-preserves-null",
+      "passed": true,
+      "evidence": {
+        "missingValues": [
+          "—",
+          "—",
+          "—",
+          "—"
+        ],
+        "chartBars": 0
+      }
+    },
+    {
+      "name": "dimension-and-sort",
+      "passed": true,
+      "evidence": {
+        "dateRows": 2,
+        "ascendingFirst": "2026-09-30",
+        "descendingFirst": "2026-10-01",
+        "campaignRows": 1
+      }
+    },
+    {
+      "name": "campaign-detail-drawer",
+      "passed": true,
+      "evidence": {
+        "drawerOpened": true,
+        "keywordDiagnostics": true,
+        "escapeCloses": true
+      }
+    },
+    {
+      "name": "csv-export-current-filter",
+      "passed": true,
+      "evidence": {
+        "downloadName": "模拟效果报表_2026-09-30.csv",
+        "csvDataRows": 1,
+        "matchesSelectedDate": true
+      }
+    },
+    {
+      "name": "csv-missing-channel-empty-fields",
+      "passed": true,
+      "evidence": {
+        "missingMetricsExportedAsEmpty": true
+      }
+    },
+    {
+      "name": "real-data-remains-unconnected",
+      "passed": true,
+      "evidence": {
+        "realMetricsEmpty": true,
+        "exportDisabled": true,
+        "channelsUnconnected": 4,
+        "leadFilterRows": 1
+      }
+    },
+    {
+      "name": "metric-definitions-dialog",
+      "passed": true,
+      "evidence": {
+        "notZeroFilled": true,
+        "duplicateGrainExcluded": true,
+        "closeWorks": true
+      }
+    },
+    {
+      "name": "mobile-width-and-controls",
+      "passed": true,
+      "evidence": {
+        "sizes": {
+          "viewport": 390,
+          "body": 390,
+          "document": 390,
+          "tableWrappers": [
+            {
+              "client": 364,
+              "scroll": 364
+            },
+            {
+              "client": 364,
+              "scroll": 740
+            },
+            {
+              "client": 0,
+              "scroll": 0
+            },
+            {
+              "client": 0,
+              "scroll": 0
+            },
+            {
+              "client": 0,
+              "scroll": 0
+            }
+          ]
+        },
+        "drawerBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 844
+        },
+        "dateFilterWorks": true
+      }
+    },
+    {
+      "name": "runtime-errors",
+      "passed": true,
+      "evidence": {
+        "runtimeErrors": [],
+        "serverErrors": []
+      }
+    }
+  ],
+  "runtimeErrors": [],
+  "networkErrors": []
+}
