@@ -1,0 +1,275 @@
+{
+  "completedAt": "2026-10-03T16:42:32Z",
+  "startedAt": "2026-10-03T16:40:37Z",
+  "environment": "managed Linux AMD64; Docker VFS; 32GB filesystem",
+  "remoteHead": "bd4cb43107910d85b5bdcb0691402534eab689a5",
+  "validatedLocalSnapshot": "36321dc",
+  "gitTree": "54ed6327cf538b7ccaf639ec1f537509bacabdf5",
+  "sourceMounted": false,
+  "allApplicationsSimultaneous": "not_verified_disk_capacity",
+  "images": [
+    {
+      "id": "sha256:3fff7554be4207074e3e352b8ebb775d0d069920504e9785d538dc3db0bca273",
+      "created": "2026-10-03T16:37:57.808477497Z",
+      "architecture": "amd64",
+      "os": "linux",
+      "sizeBytes": 1463813582,
+      "repoTags": [
+        "boran-local-dev:0.1.0"
+      ],
+      "repoDigests": []
+    },
+    {
+      "id": "sha256:49e502c2dc3678201fccb8c3984adc1c64dd213489c015de0d994d41b8d27962",
+      "created": "2026-10-03T16:38:45.949577648Z",
+      "architecture": "amd64",
+      "os": "linux",
+      "sizeBytes": 2145487694,
+      "repoTags": [
+        "boran-local-browser:0.1.0"
+      ],
+      "repoDigests": []
+    }
+  ],
+  "imageDigestKind": "local image ID / config digest; no registry manifest digest because these images were not pushed",
+  "sourceVerification": {
+    "dev": {
+      "remoteHead": "bd4cb43107910d85b5bdcb0691402534eab689a5",
+      "gitTree": "54ed6327cf538b7ccaf639ec1f537509bacabdf5",
+      "checkedSourceFiles": 176,
+      "excludedGeneratedFiles": [
+        "next-env.d.ts"
+      ],
+      "mismatches": []
+    },
+    "browser": {
+      "remoteHead": "bd4cb43107910d85b5bdcb0691402534eab689a5",
+      "gitTree": "54ed6327cf538b7ccaf639ec1f537509bacabdf5",
+      "checkedSourceFiles": 176,
+      "excludedGeneratedFiles": [
+        "next-env.d.ts"
+      ],
+      "mismatches": []
+    }
+  },
+  "serviceChecks": {
+    "init": "db:prepare exit 0",
+    "opsOverview": 200,
+    "opsRoot": 307,
+    "opsFavicon": 200,
+    "publicRoot": 404,
+    "publicRootReason": "homepage unpublished",
+    "publicFavicon": 200,
+    "worker": {
+      "status": 200,
+      "body": {
+        "status": "ok",
+        "component": "worker",
+        "handlers": "domain-handlers",
+        "mode": "mock",
+        "externalWrites": false
+      }
+    },
+    "browser": {
+      "status": 200,
+      "body": {
+        "service": "browser-runtime",
+        "healthy": true,
+        "externalWritesEnabled": false
+      }
+    },
+    "browserReadinessAndUnauthorized": {
+      "ready": {
+        "status": 503,
+        "body": {
+          "identityConfigured": false,
+          "profilesConfigured": true,
+          "integrations": "require_per_platform_verification"
+        }
+      },
+      "commandsWithoutIdentity": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "IDENTITY_NOT_CONFIGURED"
+          }
+        }
+      }
+    }
+  },
+  "mediaVolume": {
+    "mediaVolumeShared": true
+  },
+  "actualWorkerDurablePolling": {
+    "actionId": "da19ce0b-9e08-48ba-a5e2-f8009e372975",
+    "actionState": "blocked",
+    "jobState": "blocked",
+    "missingCapabilities": [
+      "service_oidc",
+      "real_platform_integration",
+      "reviewed_platform_hook",
+      "global_write_enabled",
+      "publish_enabled"
+    ]
+  },
+  "actualBrowserDurablePolling": {
+    "commandId": "0734fc47-7274-42fc-a015-a27d4b95914d",
+    "state": "blocked",
+    "mode": "mock",
+    "verified": false,
+    "missingCapabilities": [
+      "service_oidc",
+      "real_platform_integration",
+      "reviewed_platform_hook"
+    ]
+  },
+  "browserTests": {
+    "passed": 28,
+    "failed": 0,
+    "skipped": 0,
+    "nativeChromium": "Chromium 154.0.8037.92 built on Debian GNU/Linux 12 (bookworm)",
+    "playwright": "1.63.0",
+    "externalPlatformCalls": false
+  },
+  "backup": {
+    "format": "pg_dump custom",
+    "sha256": "74a34278305780a0212c283516935e036c55c4fe7f1e9ce764e02d41a56b9179",
+    "restoreDatabase": "isolated boran_final_restore",
+    "restoreExit": 0,
+    "restoredData": {
+      "publicTables": 61,
+      "memberships": 2,
+      "writeEnabled": false,
+      "blockedBrowserCommands": 1,
+      "blockedPublishJobs": 1
+    },
+    "afterContainerRestart": {
+      "memberships": 2,
+      "writeEnabled": false,
+      "blockedBrowserCommands": 1,
+      "blockedPublishJobs": 1
+    }
+  },
+  "cleanup": "Only final smoke containers/networks removed; existing root PostgreSQL and all volumes/images/private dumps preserved",
+  "correctedHarnessIssues": [
+    "Removed an explicit outer proxy build-arg override after EAI_AGAIN; successful builds use the existing Docker proxy defaults and strict TLS",
+    "Excluded tsbuildinfo generated artifacts from source verification",
+    "Expected unpublished public root HTTP404 and worker /health"
+  ],
+  "limitations": [
+    "Apple Silicon / Mac Studio hardware not tested",
+    "Four application containers were started sequentially, not all together in this VFS environment",
+    "Actual platform hooks, OIDC identities, external account login and platform publication remain blocked",
+    "Official MCR matching Playwright image pull/ARM manifest not verified",
+    "Terraform has not been initialized/planned/applied"
+  ],
+  "postStopControlRefresh": {
+    "sourceSnapshot": "post-stop-control frozen runtime files",
+    "baseRemoteHead": "bd4cb43107910d85b5bdcb0691402534eab689a5",
+    "startedAt": "2026-10-03T16:59:01Z",
+    "completedAt": "2026-10-03T17:01:14Z",
+    "scope": "Post-stop-control image rebuild, copied runtime source verification and private worker/domain stop-control QA; earlier complete service/browser/restore smoke remains separately attributed to bd4cb431 / tree54ed6327.",
+    "runtimeSourceManifest": {
+      "fileCount": 176,
+      "sha256": "533bd1f102c800d86ffbae6c0078d8a6927bbf1a45d66d5ed1a580bde90535ec",
+      "encoding": "SHA256 of UTF-8 JSON mapping path to file SHA256, sorted keys, compact separators; excludes generated next-env.d.ts and build caches",
+      "p1Files": {
+        "packages/domain/src/reporting.ts": "3aa6ce7efd43cda30974817f92dd9f0c44517ff6c90871b49debfffafba4765c",
+        "apps/worker/src/report-dispatch.ts": "0fbd0205ebd41e7c943093dd7b5bbf46962f0d420a8629b386b0c555121f46e4"
+      }
+    },
+    "sourceMounted": false,
+    "testHarness": {
+      "path": "tests/integration/report-stop-control.test.ts",
+      "sha256": "3d85e38c6f854df5156e3b0f641242e878925c876d913130b7447d2351974e8e",
+      "copiedIntoTemporaryDevContainer": true,
+      "productModulesUsedFromImage": true
+    },
+    "images": [
+      {
+        "id": "sha256:13362aa69c1979a58dcde2218ad8aa42639dc1d8d72651972e148f064073aced",
+        "created": "2026-10-03T16:59:22.105314934Z",
+        "architecture": "amd64",
+        "os": "linux",
+        "sizeBytes": 1463839986,
+        "repoTags": [
+          "boran-local-dev:0.1.0"
+        ],
+        "repoDigests": []
+      },
+      {
+        "id": "sha256:41f884ba8e424ae4e9439f4cd5150995fe7f8f18726d006e2c0b953e60d59b9b",
+        "created": "2026-10-03T17:00:42.104704075Z",
+        "architecture": "amd64",
+        "os": "linux",
+        "sizeBytes": 2145514153,
+        "repoTags": [
+          "boran-local-browser:0.1.0"
+        ],
+        "repoDigests": []
+      }
+    ],
+    "imageDigestKind": "local image ID / config digest; no registry manifest digest because these images were not pushed",
+    "sourceVerification": {
+      "dev": {
+        "sourceSnapshot": "post-stop-control frozen runtime files",
+        "baseRemoteHead": "bd4cb43107910d85b5bdcb0691402534eab689a5",
+        "manifestSha256": "533bd1f102c800d86ffbae6c0078d8a6927bbf1a45d66d5ed1a580bde90535ec",
+        "checkedSourceFiles": 176,
+        "mismatches": []
+      },
+      "browser": {
+        "sourceSnapshot": "post-stop-control frozen runtime files",
+        "baseRemoteHead": "bd4cb43107910d85b5bdcb0691402534eab689a5",
+        "manifestSha256": "533bd1f102c800d86ffbae6c0078d8a6927bbf1a45d66d5ed1a580bde90535ec",
+        "checkedSourceFiles": 176,
+        "mismatches": []
+      }
+    },
+    "reportStopControlTests": {
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "mode": "live with injected private no-network adapters and isolated PGlite",
+      "covers": [
+        "default deployment stop",
+        "current organization stop",
+        "private registration cannot bypass stop",
+        "active operator in_app SQL receipts",
+        "authorized enabled path",
+        "unknown delivered/found read-only recovery",
+        "absent cannot resubmit while stopped",
+        "current org/environment recheck before submission",
+        "monotonic fencing across stop attempt refunds for delayed notification and Drive receipts"
+      ],
+      "externalPlatformCalls": false
+    },
+    "browserCompatibility": {
+      "nativeChromium": "Chromium 154.0.8037.92 built on Debian GNU/Linux 12 (bookworm)",
+      "playwright": "1.63.0",
+      "matchesEarlierFullSmokeVersion": true
+    },
+    "temporaryValidationPorts": {
+      "dev": {},
+      "browser": {
+        "3003/tcp": null
+      }
+    },
+    "preservedEarlierEvidence": {
+      "fullServiceSmoke": "2026-10-03T16:42:32Z bd4cb43107910d85b5bdcb0691402534eab689a5 / tree54ed6327cf538b7ccaf639ec1f537509bacabdf5",
+      "browserTests": {
+        "passed": 28,
+        "failed": 0,
+        "skipped": 0
+      },
+      "backupRestore": "61 public tables; 2 synthetic members; write_enabled=false; isolated restore and PG restart verified"
+    },
+    "cleanup": "Only prior task image tags and temporary validation containers removed; existing main PostgreSQL and all volumes retained; new images retained",
+    "limitations": [
+      "Not an ARM64 Mac Studio hardware test",
+      "The complete four-service smoke and backup restore were not repeated in this focused refresh",
+      "No actual external platform, email or Drive calls; real transports and identities remain unconfigured",
+      "Images have not been pushed to a container registry"
+    ]
+  }
+}

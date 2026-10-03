@@ -1,0 +1,20 @@
+# Managed cloud executor only. Mac Studio does not need this override.
+services:
+  init:
+    build:
+      secrets: [proxy_ca]
+  ops:
+    build:
+      secrets: [proxy_ca]
+  public-site:
+    build:
+      secrets: [proxy_ca]
+  worker:
+    build:
+      secrets: [proxy_ca]
+  browser-runtime:
+    build:
+      secrets: [proxy_ca]
+secrets:
+  proxy_ca:
+    file: ${CODEX_PROXY_CERT:?Managed executor requires its proxy CA build secret}

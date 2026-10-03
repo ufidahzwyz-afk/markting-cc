@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1.7
+# Matching Playwright package/browser pair. Image retrieval is currently blocked by the environment's MCR redirect policy.
+FROM mcr.microsoft.com/playwright:v1.63.0-noble
+WORKDIR /app
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 BROWSER_RUNTIME_BIND=0.0.0.0
+COPY package.json package-lock.json tsconfig.base.json ./
+COPY apps ./apps
+COPY packages ./packages
+COPY scripts ./scripts
+RUN --mount=type=secret,id=proxy_ca,required=false \
+    if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi; \
+    npm ci --strict-ssl=true
+RUN mkdir -p /var/lib/boran/browser-profiles && chown -R pwuser:pwuser /app /var/lib/boran
+USER pwuser
+EXPOSE 3003
+CMD ["npm", "run", "start", "--workspace", "@boran/browser-runtime"]

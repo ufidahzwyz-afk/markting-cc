@@ -1,19 +1,29 @@
-name: UI preview checks
-
+name: System quality checks
 on:
   pull_request:
   push:
-    branches: [main, codex/m0-foundation]
-
+    branches: [main, codex/m0-foundation, codex/v1-parallel-development]
 permissions:
   contents: read
-
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_DB: boran_test
+          POSTGRES_USER: boran_test
+          POSTGRES_PASSWORD: isolated_test_only
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U boran_test -d boran_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
     env:
       NEXT_TELEMETRY_DISABLED: '1'
+      BORAN_TEST_PG_URL: postgresql://boran_test:isolated_test_only@localhost:5432/boran_test
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,4 +31,8 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
+      - run: npm run generate --workspace @boran/contracts
+      - name: Check generated contract drift
+        run: git diff --exit-code -- packages/contracts/src/*.generated.ts
       - run: npm run check
+      - run: docker compose -f infra/compose.yaml config --quiet

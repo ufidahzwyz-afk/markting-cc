@@ -1,0 +1,106 @@
+name: boran-marketing-local
+x-build: &app-build
+  context: ..
+  dockerfile: infra/Dockerfile
+  target: development
+x-environment: &app-environment
+  APP_ENV: development
+  AUTH_MODE: mock
+  BORAN_MODE: mock
+  AI_MODE: mock
+  DATABASE_URL: postgresql://boran_local:local_test_only@postgres:5432/boran_local
+  OPS_BASE_URL: http://localhost:3000
+  PUBLIC_BASE_URL: http://localhost:3001
+  PUBLIC_ALLOWED_PATH_PREFIXES: /service,/industry,/case,/article
+  BROWSER_DISPATCH_ORGS: 00000000-0000-4000-8000-000000000001
+  TZ: Asia/Shanghai
+  WRITE_ENABLED: 'false'
+  ADS_WRITE_ENABLED: 'false'
+  PUBLISH_ENABLED: 'false'
+  PRODUCTION_PII_AUTOMATION_ENABLED: 'false'
+services:
+  postgres:
+    image: postgres:17.6-bookworm
+    environment:
+      POSTGRES_DB: boran_local
+      POSTGRES_USER: boran_local
+      POSTGRES_PASSWORD: local_test_only
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    networks: [backend]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U boran_local -d boran_local]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  init:
+    build: *app-build
+    environment: *app-environment
+    command: [npm, run, 'db:prepare']
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [backend]
+    restart: 'no'
+  ops:
+    build: *app-build
+    environment:
+      <<: *app-environment
+      BORAN_MEDIA_ROOT: /app/.local/media
+    volumes: [media-data:/app/.local/media]
+    command: [npm, run, dev, --workspace, '@boran/ops']
+    ports: ['127.0.0.1:3000:3000']
+    depends_on:
+      init: { condition: service_completed_successfully }
+    networks: [backend, frontend]
+    restart: unless-stopped
+  public-site:
+    build: *app-build
+    environment:
+      <<: *app-environment
+      BORAN_MEDIA_ROOT: /app/.local/media
+    command: [npm, run, dev, --workspace, '@boran/public-site']
+    ports: ['127.0.0.1:3001:3001']
+    volumes: [media-data:/app/.local/media]
+    depends_on:
+      init: { condition: service_completed_successfully }
+    networks: [backend, frontend]
+    restart: unless-stopped
+  worker:
+    build: *app-build
+    environment:
+      <<: *app-environment
+      WORKER_PORT: '3002'
+      WORKER_BIND: 0.0.0.0
+      BROWSER_RUNTIME_INTERNAL_URL: http://browser-runtime:3003
+    command: [npm, run, start, --workspace, '@boran/worker']
+    depends_on:
+      init: { condition: service_completed_successfully }
+    networks: [backend]
+    restart: unless-stopped
+  browser-runtime:
+    build:
+      context: ..
+      dockerfile: apps/browser-runtime/Dockerfile
+    environment:
+      <<: *app-environment
+      BROWSER_RUNTIME_BIND: 0.0.0.0
+      BROWSER_PROFILE_ROOT: /var/lib/boran/browser-profiles
+      BROWSER_RUNTIME_PORT: '3003'
+    volumes: [browser-profiles:/var/lib/boran/browser-profiles]
+    shm_size: 512mb
+    depends_on:
+      init: { condition: service_completed_successfully }
+    networks: [backend]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:3003/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+volumes:
+  postgres-data:
+  media-data:
+  browser-profiles:
+networks:
+  backend: { internal: true }
+  frontend:

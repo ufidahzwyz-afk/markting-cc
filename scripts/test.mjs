@@ -1,14 +1,9 @@
 import { readdirSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-
-const tests = [];
-for (const directory of ['apps/ops/tests', 'packages/ui/tests']) {
-  if (!existsSync(directory)) continue;
-  for (const entry of readdirSync(directory)) if (entry.endsWith('.test.ts')) tests.push(`${directory}/${entry}`);
-}
-if (tests.length === 0) {
-  console.error('The UI preview must include its access-control tests.');
-  process.exit(1);
-}
-const result = spawnSync(process.execPath, ['--import', 'tsx', '--test', ...tests], { stdio: 'inherit' });
-process.exit(result.status ?? 1);
+const tests=[];
+function collect(directory){if(!existsSync(directory))return;for(const entry of readdirSync(directory,{withFileTypes:true})){const path=`${directory}/${entry.name}`;if(entry.isDirectory())collect(path);else if(/\.test\.tsx?$/.test(entry.name))tests.push(path);}}
+for(const root of ['apps','packages'])for(const name of readdirSync(root))collect(`${root}/${name}/tests`);
+collect('tests/integration');
+if(!tests.length)throw new Error('No verification tests found');
+const result=spawnSync(process.execPath,['--import','tsx','--test','--test-concurrency=1',...tests.sort()],{stdio:'inherit'});
+process.exit(result.status??1);

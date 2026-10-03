@@ -1,10 +1,5 @@
-import { currentOpsAccess } from "@/lib/access";
-import { overviewFixture } from "@/lib/fixtures";
-
-export const dynamic = "force-dynamic";
-
-export function GET() {
-  const access = currentOpsAccess();
-  if (!access.allowed) return Response.json({ error: { code: access.code, message: access.message } }, { status: access.status, headers: { "Cache-Control": "no-store" } });
-  return Response.json({ data: overviewFixture, meta: { environment: access.environment, dataSource: "fixture", label: "开发环境 · 模拟数据" } }, { headers: { "Cache-Control": "no-store" } });
-}
+import {authenticate} from '@/lib/server-context';
+import {getWorkspaceOverview} from '@boran/domain/workspace';
+import {jsonData,errorResponse} from '@/lib/http';
+export const dynamic='force-dynamic';
+export async function GET(request:Request){try{const ctx=await authenticate(request.headers);return jsonData(await getWorkspaceOverview(ctx),200,{mode:ctx.mode});}catch(error){return errorResponse(error);}}

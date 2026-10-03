@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+# Pinned COS image supplies Docker. No SSH, desktop, terminal, VNC or CDP listener is published.
+profile_device=/dev/disk/by-id/google-browser-profiles
+profile_mount=/mnt/disks/browser-profiles
+mkdir -p "$profile_mount"
+# Never format an attached disk during restart/recovery. Provision a confirmed new blank disk separately.
+profile_filesystem=$(blkid -s TYPE -o value "$profile_device" || true)
+if [ "$profile_filesystem" != ext4 ]; then
+  echo 'Browser profile disk requires an explicitly provisioned ext4 filesystem; refusing automatic format.' >&2
+  exit 1
+fi
+mountpoint -q "$profile_mount" || mount -o nodev,nosuid "$profile_device" "$profile_mount"
+chmod 700 "$profile_mount"
+chown 1000:1000 "$profile_mount"
+private_ip=$(curl -fsS -H Metadata-Flavor:Google http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/ip)
+docker pull '${image}'
+docker run --name boran-browser --restart unless-stopped --init --cpus=2 --memory=4g --shm-size=512m \
+  --publish "$private_ip:3003:3003" --volume "$profile_mount:/var/lib/boran/browser-profiles" \
+  --env BORAN_MODE=live --env BROWSER_RUNTIME_BIND=0.0.0.0 --env BROWSER_PROFILE_ROOT=/var/lib/boran/browser-profiles \
+  --env BROWSER_ENCRYPTED_VOLUME_CONFIRMED=true --env BROWSER_OIDC_AUDIENCE="http://$private_ip:3003" \
+  --env 'BROWSER_SERVICE_ORGS={"${worker_email}":["${org_id}"]}' '${image}'
+# DATABASE_URL must be supplied through a reviewed short-lived private connection configuration before commands can run.

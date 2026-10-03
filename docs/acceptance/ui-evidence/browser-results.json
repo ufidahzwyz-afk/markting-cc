@@ -1,0 +1,358 @@
+{
+  "checked_at": "2026-10-03T16:21:17.360Z",
+  "environment": {
+    "ops": "http://localhost:3000",
+    "public": "http://localhost:3001",
+    "mode": "development/mock",
+    "browser": "Chromium",
+    "database": "shared PostgreSQL",
+    "production_build_verified": false
+  },
+  "results": [
+    {
+      "name": "six desktop routes render and tables remain inside the viewport",
+      "status": "passed",
+      "detail": {
+        "/overview": "今日工作",
+        "/themes": "推广主题14",
+        "/content": "内容与官网",
+        "/leads": "共享线索",
+        "/reports": "效果复盘",
+        "/settings": "系统设置"
+      }
+    },
+    {
+      "name": "persisted theme edit and native drawer keyboard closing",
+      "status": "passed",
+      "detail": {
+        "theme_id": "01f99f5b-e7bd-49dc-812c-8b710311196c",
+        "version": 4,
+        "goal_persisted": true
+      }
+    },
+    {
+      "name": "overview note is shared after actual actor switching and reload",
+      "status": "passed",
+      "detail": {
+        "task_id": "8504355a-7607-4cac-a1b7-6d12aafd5c74",
+        "actor_switch": true,
+        "note_shared": true
+      }
+    },
+    {
+      "name": "content can save two immutable versions, review latest and register a draft website page",
+      "status": "passed",
+      "detail": {
+        "content_id": "8860b99f-9ea6-47f7-8a7b-6cd2a6dd995c",
+        "versions": [
+          {
+            "id": "d9e0893f-6f67-4bed-bf08-c8b5e86ffb5b",
+            "version": 2,
+            "review_status": "approved"
+          },
+          {
+            "id": "936cb92b-5948-47bb-a2d1-653f44504ab2",
+            "version": 1,
+            "review_status": "draft"
+          }
+        ],
+        "page_id": "039c9b15-adaa-4813-b87e-1b6475eda9b4",
+        "anonymous_draft_status": 404
+      }
+    },
+    {
+      "name": "shared leads distinguish captures and conversations without fabricated contacts",
+      "status": "passed",
+      "detail": {
+        "lead_count": 0,
+        "capture_count": 0,
+        "conversation_count": 0
+      }
+    },
+    {
+      "name": "reports metric definitions and real-data mode are explicit",
+      "status": "passed",
+      "detail": {
+        "definitions_dialog": true,
+        "real_mode_explicit": true
+      }
+    },
+    {
+      "name": "mobile pages and drawer have no document horizontal overflow",
+      "status": "passed",
+      "detail": {
+        "/overview": {
+          "viewport": 390,
+          "document": 390,
+          "body": 390,
+          "navigation": [
+            {
+              "text": "今日工作",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "推广主题",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "内容与官网",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "共享线索",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "效果复盘",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            }
+          ]
+        },
+        "/themes": {
+          "viewport": 390,
+          "document": 390,
+          "body": 390,
+          "navigation": [
+            {
+              "text": "今日工作",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "推广主题",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "内容与官网",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "共享线索",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "效果复盘",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            }
+          ]
+        },
+        "/content": {
+          "viewport": 390,
+          "document": 390,
+          "body": 390,
+          "navigation": [
+            {
+              "text": "今日工作",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "推广主题",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "内容与官网",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "共享线索",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "效果复盘",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            }
+          ]
+        },
+        "/leads": {
+          "viewport": 390,
+          "document": 390,
+          "body": 390,
+          "navigation": [
+            {
+              "text": "今日工作",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "推广主题",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "内容与官网",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "共享线索",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "效果复盘",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            }
+          ]
+        },
+        "/reports": {
+          "viewport": 390,
+          "document": 390,
+          "body": 390,
+          "navigation": [
+            {
+              "text": "今日工作",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "推广主题",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "内容与官网",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "共享线索",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "效果复盘",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            }
+          ]
+        },
+        "/settings": {
+          "viewport": 390,
+          "document": 390,
+          "body": 390,
+          "navigation": [
+            {
+              "text": "今日工作",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "推广主题",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "内容与官网",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "共享线索",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            },
+            {
+              "text": "效果复盘",
+              "top": 54.25,
+              "bottom": 73.75,
+              "nav_top": 45.5,
+              "nav_bottom": 82.5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "public website privacy and unsigned previews remain closed",
+      "status": "passed",
+      "detail": {
+        "/": 404,
+        "/privacy": 200,
+        "/preview/00000000-0000-4000-8000-000000000001": 404
+      }
+    },
+    {
+      "name": "no browser runtime exceptions",
+      "status": "passed",
+      "detail": {
+        "page_errors": [],
+        "failed_requests": []
+      }
+    }
+  ],
+  "pageErrors": [],
+  "failedRequests": []
+}

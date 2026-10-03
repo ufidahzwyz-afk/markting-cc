@@ -1,0 +1,601 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://boran.example.invalid/schemas/page_modules.v1.json",
+  "title": "V1 页面模块",
+  "type": "array",
+  "minItems": 1,
+  "maxItems": 30,
+  "items": {
+    "oneOf": [
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "hero"
+          },
+          "schema_version": {
+            "const": 1
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "headline": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "cta": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 50
+                  },
+                  "href": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "navigate",
+                      "scroll_to_form",
+                      "contact"
+                    ]
+                  }
+                },
+                "required": [
+                  "label",
+                  "href",
+                  "action"
+                ]
+              },
+              "media": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "asset_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "alt": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "asset_id",
+                  "alt"
+                ]
+              }
+            },
+            "required": [
+              "headline",
+              "description",
+              "cta"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "schema_version",
+          "data"
+        ]
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "problem"
+          },
+          "schema_version": {
+            "const": 1
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "heading": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "minItems": 1,
+                "maxItems": 8
+              }
+            },
+            "required": [
+              "heading",
+              "items"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "schema_version",
+          "data"
+        ]
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "solution"
+          },
+          "schema_version": {
+            "const": 1
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "heading": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "body": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "paragraph",
+                        "bullet",
+                        "heading"
+                      ]
+                    },
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 3000
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "text"
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 40
+              },
+              "claim_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "maxItems": 30
+              }
+            },
+            "required": [
+              "heading",
+              "body",
+              "claim_ids"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "schema_version",
+          "data"
+        ]
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "scope"
+          },
+          "schema_version": {
+            "const": 1
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "heading": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "included": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                "maxItems": 20
+              },
+              "dependencies": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                "maxItems": 20
+              }
+            },
+            "required": [
+              "heading",
+              "included",
+              "dependencies"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "schema_version",
+          "data"
+        ]
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "process"
+          },
+          "schema_version": {
+            "const": 1
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "heading": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "maxLength": 80
+                    },
+                    "description": {
+                      "type": "string",
+                      "maxLength": 500
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "description"
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 10
+              }
+            },
+            "required": [
+              "heading",
+              "steps"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "schema_version",
+          "data"
+        ]
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "proof"
+          },
+          "schema_version": {
+            "const": 1
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "heading": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "claims": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "claim_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "display_text": {
+                      "type": "string",
+                      "maxLength": 1000
+                    }
+                  },
+                  "required": [
+                    "claim_id",
+                    "display_text"
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 20
+              }
+            },
+            "required": [
+              "heading",
+              "claims"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "schema_version",
+          "data"
+        ]
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "case"
+          },
+          "schema_version": {
+            "const": 1
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "heading": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "customer_display": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "problem": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "boran_scope": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "result": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "project_status": {
+                "type": "string",
+                "enum": [
+                  "planned",
+                  "implementing",
+                  "live",
+                  "accepted"
+                ]
+              },
+              "claim_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              }
+            },
+            "required": [
+              "heading",
+              "customer_display",
+              "problem",
+              "boran_scope",
+              "result",
+              "project_status",
+              "claim_ids"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "schema_version",
+          "data"
+        ]
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "faq"
+          },
+          "schema_version": {
+            "const": 1
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "heading": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "question": {
+                      "type": "string",
+                      "maxLength": 300
+                    },
+                    "answer": {
+                      "type": "string",
+                      "maxLength": 2000
+                    },
+                    "claim_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "maxItems": 10
+                    }
+                  },
+                  "required": [
+                    "question",
+                    "answer",
+                    "claim_ids"
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 12
+              }
+            },
+            "required": [
+              "heading",
+              "items"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "schema_version",
+          "data"
+        ]
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "cta"
+          },
+          "schema_version": {
+            "const": 1
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "heading": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "button": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 50
+                  },
+                  "href": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "navigate",
+                      "scroll_to_form",
+                      "contact"
+                    ]
+                  }
+                },
+                "required": [
+                  "label",
+                  "href",
+                  "action"
+                ]
+              }
+            },
+            "required": [
+              "heading",
+              "button"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "schema_version",
+          "data"
+        ]
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "lead_form"
+          },
+          "schema_version": {
+            "const": 1
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "heading": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "form_schema_id": {
+                "const": "lead_form_v1"
+              },
+              "privacy_notice_version": {
+                "type": "string"
+              },
+              "submit_label": {
+                "type": "string",
+                "maxLength": 40
+              }
+            },
+            "required": [
+              "heading",
+              "form_schema_id",
+              "privacy_notice_version",
+              "submit_label"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "schema_version",
+          "data"
+        ]
+      }
+    ]
+  },
+  "description": "文本不允许原始HTML；CTA href必须为站内相对路径或允许的https域名。媒体访问和claim权限需业务校验。service/industry默认hero/problem/solution/scope/proof/faq/lead_form；case与article可裁减但保留CTA。每页最多一个lead_form，至少一个hero。"
+}
