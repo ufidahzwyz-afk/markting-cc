@@ -1,143 +1,161 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Icon } from "./icon";
-import { calculateCampaignMetrics, keywordFixtures } from "@/lib/fixtures";
+import { api } from "@/lib/client-api";
+import { accountCounts, csvCell, dailyRows, qualityLabels, sourceLabel, sumCounts } from "@/lib/report-fixtures";
+import type { AccountMetrics, Connection, Counts, DailyRow, ImportFixture, ImportPreflight, Metric, MetricsResponse, Quality, ReportNotification, ReportSnapshot } from "@/lib/report-fixtures";
 
-type Counts = { spend: number; impressions: number; clicks: number; platformConversions: number };
-type DailyRow = Counts & { date: string };
 type Channel = "all" | "search" | "seo" | "geo" | "leads";
 type Dimension = "channel" | "campaign" | "date";
-type Metric = keyof Counts;
-type ReportRow = { id: string; name: string; channel: Exclude<Channel, "all">; note: string; counts: Counts | null; date?: string };
-
-// Fixed campaign-level mock rows; subordinate keyword diagnostics never contribute to totals.
-const dailyFixtures: readonly DailyRow[] = [
-  { date: "2026-09-30", spend: 100, impressions: 1000, clicks: 50, platformConversions: 4 },
-  { date: "2026-10-01", spend: 120, impressions: 1200, clicks: 60, platformConversions: 5 },
-];
-const fullCampaign = calculateCampaignMetrics();
+type ReportRow = { id: string; name: string; channel: Exclude<Channel, "all">; note: string; counts: Counts | null; quality: Quality; account?: AccountMetrics; date?: string };
 const metricLabels: Record<Metric, string> = { spend: "花费", impressions: "展现", clicks: "点击", platformConversions: "平台转化" };
-const metricKeys = ["spend", "impressions", "clicks", "platformConversions"] as const;
-const currency = (value: number) => `¥${value.toFixed(2)}`;
+const metricKeys: readonly Metric[] = ["spend", "impressions", "clicks", "platformConversions"];
+const money = (value: number, currency: string | null) => currency ? new Intl.NumberFormat("zh-CN", { style: "currency", currency }).format(value) : "—";
 const count = (value: number) => value.toLocaleString("zh-CN");
-const percentage = (numerator: number, denominator: number) => denominator > 0 ? `${(numerator / denominator * 100).toFixed(2)}%` : "—";
-const displayMetric = (key: Metric, value: number | undefined) => value === undefined ? "—" : key === "spend" ? currency(value) : count(value);
+const percentage = (numerator: number | null, denominator: number | null) => numerator !== null && denominator !== null && denominator > 0 ? `${(numerator / denominator * 100).toFixed(2)}%` : "—";
+const displayMetric = (key: Metric, value: number | null | undefined, currency: string | null = "CNY") => value == null ? "—" : key === "spend" ? money(value, currency) : count(value);
+const errorText = (error: unknown) => error instanceof Error ? error.message : "数据暂不可用，请重试。";
+const dateLabel = (value: string) => value.slice(0, 10);
+const timestamp = (value: string | null | undefined) => value ? new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "—";
+const qualityTone = (quality: Quality) => quality === "complete" ? "green" : quality === "missing" ? "neutral" : "amber";
+function yesterday() { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(Date.now() - 86400000)); }
 
-function DailyChart({ rows, metric }: { rows: readonly DailyRow[]; metric: Metric }) {
+function DailyChart({ rows, metric, mock }: { rows: readonly DailyRow[]; metric: Metric; mock: boolean }) {
   const [focusedDate, setFocusedDate] = useState<string | null>(null);
-  const focused = rows.find((row) => row.date === focusedDate) ?? rows.at(-1);
-  const ceiling = Math.ceil(Math.max(...rows.map((row) => row[metric]), 1) / 4) * 4;
-  const left = 48;
-  const baseline = 156;
-  const plotHeight = 122;
-  const barWidth = 72;
-  return <div className="ui-chart">
-    {rows.length ? <>
-      <div className="ui-chart-readout" aria-live="polite"><span>{focused?.date}</span><strong>{metricLabels[metric]} {displayMetric(metric, focused?.[metric])}</strong><span>模拟数据</span></div>
-      <svg viewBox="0 0 560 187" width="100%" height="187" role="img" aria-label={`按日期展示的模拟${metricLabels[metric]}柱状图`}>
-        {[0, 1, 2, 3, 4].map((tick) => {
-          const y = baseline - tick / 4 * plotHeight;
-          return <g key={tick}><line x1={left} x2={536} y1={y} y2={y} stroke="#e8ecf1" /><text x={left - 9} y={y + 4} textAnchor="end" fontSize="11" fill="#6b7280">{metric === "spend" ? `¥${ceiling * tick / 4}` : count(ceiling * tick / 4)}</text></g>;
-        })}
-        {rows.map((row, index) => {
-          const height = row[metric] / ceiling * plotHeight;
-          const x = left + 488 / rows.length * (index + 0.5) - barWidth / 2;
-          return <g key={row.date}>
-            <rect x={x} y={baseline - height} width={barWidth} height={height} rx="3" fill={focused?.date === row.date ? "#2458c5" : "#82a9ef"} tabIndex={0} role="graphics-symbol" aria-label={`${row.date}，模拟${metricLabels[metric]} ${displayMetric(metric, row[metric])}`} onMouseEnter={() => setFocusedDate(row.date)} onFocus={() => setFocusedDate(row.date)}><title>{`${row.date} · ${metricLabels[metric]} ${displayMetric(metric, row[metric])}（模拟）`}</title></rect>
-            <text x={x + barWidth / 2} y={baseline - height - 8} textAnchor="middle" fontSize="12" fill="#334155">{displayMetric(metric, row[metric])}</text>
-            <text x={x + barWidth / 2} y={180} textAnchor="middle" fontSize="11" fill="#6b7280">{row.date.slice(5)}</text>
-          </g>;
-        })}
-      </svg>
-    </> : <div className="ui-report-unavailable">当前渠道没有采集记录</div>}
-  </div>;
+  const focused = rows.find(row => row.date === focusedDate) ?? rows.at(-1);
+  const ceiling = Math.ceil(Math.max(...rows.map(row => row[metric] ?? 0), 1) / 4) * 4;
+  const left = 48; const baseline = 156; const plotHeight = 122;
+  const barWidth = Math.min(72, 360 / Math.max(rows.length, 1));
+  return <div className="ui-chart">{rows.some(row => row[metric] !== null) ? <>
+    <div className="ui-chart-readout" aria-live="polite"><span>{focused?.date}</span><strong>{metricLabels[metric]} {displayMetric(metric, focused?.[metric], focused?.currency)}</strong><span>{mock ? "模拟 · " : ""}{focused ? qualityLabels[focused.quality] : "未采集"}</span></div>
+    <svg viewBox="0 0 560 187" width="100%" height="187" role="img" aria-label={`按日期展示的${mock ? "模拟" : ""}${metricLabels[metric]}柱状图`}>
+      {[0, 1, 2, 3, 4].map(tick => { const y = baseline - tick / 4 * plotHeight; return <g key={tick}><line x1={left} x2={536} y1={y} y2={y} stroke="#e8ecf1" /><text x={left - 9} y={y + 4} textAnchor="end" fontSize="11" fill="#6b7280">{count(ceiling * tick / 4)}</text></g>; })}
+      {rows.map((row, index) => { const height = (row[metric] ?? 0) / ceiling * plotHeight; const x = left + 488 / rows.length * (index + 0.5) - barWidth / 2; return <g key={row.date}>
+        <rect x={x} y={baseline - Math.max(height, 2)} width={barWidth} height={Math.max(height, 2)} rx="3" fill={row[metric] === null ? "#e8ecf1" : focused?.date === row.date ? "#2458c5" : "#82a9ef"} tabIndex={0} role="graphics-symbol" aria-label={`${row.date}，${metricLabels[metric]} ${displayMetric(metric, row[metric], row.currency)}，${qualityLabels[row.quality]}`} onMouseEnter={() => setFocusedDate(row.date)} onFocus={() => setFocusedDate(row.date)}><title>{`${row.date} · ${metricLabels[metric]} ${displayMetric(metric, row[metric], row.currency)} · ${qualityLabels[row.quality]}`}</title></rect>
+        <text x={x + barWidth / 2} y={baseline - height - 8} textAnchor="middle" fontSize="12" fill="#334155">{displayMetric(metric, row[metric], row.currency)}</text><text x={x + barWidth / 2} y={180} textAnchor="middle" fontSize="11" fill="#6b7280">{row.date.slice(5)}</text>
+      </g>; })}
+    </svg>
+  </> : <div className="ui-report-unavailable">当前窗口没有已提交的采集记录</div>}</div>;
 }
 
 export function ReportsWorkspace() {
+  const [mode, setMode] = useState<"mock" | "live" | null>(null);
   const [view, setView] = useState<"fixture" | "real">("fixture");
-  const [period, setPeriod] = useState("all");
-  const [channel, setChannel] = useState<Channel>("all");
-  const [dimension, setDimension] = useState<Dimension>("channel");
-  const [metric, setMetric] = useState<Metric>("spend");
+  const [window, setWindow] = useState({ start: yesterday(), end: yesterday() });
+  const [period, setPeriod] = useState("all"); const [channel, setChannel] = useState<Channel>("all");
+  const [dimension, setDimension] = useState<Dimension>("channel"); const [metric, setMetric] = useState<Metric>("spend");
   const [sort, setSort] = useState<{ metric: Metric; ascending: boolean }>({ metric: "spend", ascending: false });
-  const [selectedRow, setSelectedRow] = useState<ReportRow | null>(null);
-  const [exportStatus, setExportStatus] = useState("");
-  const definitionsDialog = useRef<HTMLDialogElement>(null);
-  const detailsDialog = useRef<HTMLDialogElement>(null);
-  const selectedDays = useMemo(() => dailyFixtures.filter((row) => period === "all" || row.date === period), [period]);
-  const periodLabel = period === "all" ? "2026-09-30 — 2026-10-01" : period;
-  const campaignTotals = useMemo<Counts>(() => period === "all" ? fullCampaign : selectedDays.reduce<Counts>((result, row) => ({ spend: result.spend + row.spend, impressions: result.impressions + row.impressions, clicks: result.clicks + row.clicks, platformConversions: result.platformConversions + row.platformConversions }), { spend: 0, impressions: 0, clicks: 0, platformConversions: 0 }), [period, selectedDays]);
-  const totals = view === "fixture" && (channel === "all" || channel === "search") ? campaignTotals : null;
-  const rows = useMemo(() => {
-    const campaign: ReportRow = { id: "demo_c01", name: "测试搜索推广计划", channel: "search", note: "百度搜索 · demo_c01 · 模拟", counts: campaignTotals };
-    const missing: ReportRow[] = [
-      { id: "seo", name: "SEO 自然搜索", channel: "seo", note: "搜索数据待接入", counts: null },
-      { id: "geo", name: "GEO 可见性", channel: "geo", note: "采样数据待接入", counts: null },
-      { id: "leads", name: "线索回收", channel: "leads", note: "接待与线索数据待接入", counts: null },
-    ];
-    const candidates: ReportRow[] = dimension === "date" ? selectedDays.map((row) => ({ id: row.date, name: row.date, date: row.date, channel: "search", note: "百度搜索 · demo_c01 · 模拟", counts: row })) : dimension === "campaign" ? [campaign] : [{ ...campaign, id: "search", name: "百度搜索（模拟）" }, ...missing];
-    return candidates.filter((row) => channel === "all" || row.channel === channel).sort((a, b) => {
-      if (!a.counts) return b.counts ? 1 : 0;
-      if (!b.counts) return -1;
-      const difference = a.counts[sort.metric] - b.counts[sort.metric];
-      return sort.ascending ? difference : -difference;
-    });
-  }, [campaignTotals, dimension, selectedDays, channel, sort]);
+  const [metrics, setMetrics] = useState<MetricsResponse | null>(null); const [connections, setConnections] = useState<Connection[]>([]);
+  const [fixtures, setFixtures] = useState<ImportFixture[]>([]); const [reports, setReports] = useState<ReportSnapshot[]>([]);
+  const [notifications, setNotifications] = useState<ReportNotification[]>([]); const [savedView, setSavedView] = useState<"reports" | "inbox">("reports");
+  const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [status, setStatus] = useState("");
+  const [revision, setRevision] = useState(0); const [pending, setPending] = useState(false);
+  const [selectedRow, setSelectedRow] = useState<ReportRow | null>(null); const [selectedReport, setSelectedReport] = useState<ReportSnapshot | null>(null);
+  const [fixtureKey, setFixtureKey] = useState(""); const [connectionId, setConnectionId] = useState("");
+  const [preflight, setPreflight] = useState<ImportPreflight | null>(null); const [confirmed, setConfirmed] = useState(false); const [importError, setImportError] = useState("");
+  const definitionsDialog = useRef<HTMLDialogElement>(null); const detailsDialog = useRef<HTMLDialogElement>(null); const importDialog = useRef<HTMLDialogElement>(null);
+  const snapshotDialog = useRef<HTMLDialogElement>(null); const requestNumber = useRef(0);
+  const matchingMode = mode !== null && (mode === "mock" ? view === "fixture" : view === "real");
+  const eligibleConnections = connections.filter(connection => connection.enabled_for_reporting && connection.read_mode === "mock" && connection.currency === "CNY" && connection.timezone === "Asia/Shanghai");
+  const selectedFixture = fixtures.find(fixture => fixture.object_key === fixtureKey);
+  const periodLabel = period === "all" ? `${window.start} — ${window.end}` : period;
 
-  function openDetails(row: ReportRow) {
-    setSelectedRow(row);
-    detailsDialog.current?.showModal();
-  }
+  useEffect(() => {
+    let active = true;
+    async function initialize() {
+      try {
+        const [session, sources] = await Promise.all([api<{ mode: "mock" | "live" }>("/session"), api<Connection[]>("/connections")]);
+        const examples = session.mode === "mock" ? await api<ImportFixture[]>("/imports/fixtures") : [];
+        if (!active) return;
+        setConnections(sources); setFixtures(examples); setMode(session.mode); setView(session.mode === "mock" ? "fixture" : "real");
+        if (examples[0]) { setFixtureKey(examples[0].object_key); setWindow({ start: examples[0].window_start, end: examples[0].window_end }); }
+        const source = sources.find(connection => connection.enabled_for_reporting && connection.read_mode === "mock" && connection.currency === "CNY" && connection.timezone === "Asia/Shanghai");
+        if (source) setConnectionId(source.id);
+      } catch (failure) { if (active) { setError(errorText(failure)); setLoading(false); } }
+    }
+    void initialize(); return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    if (!mode) return;
+    const requestId = ++requestNumber.current; let active = true; setLoading(true); setError("");
+    const query = new URLSearchParams({ start: window.start, end: window.end }).toString();
+    Promise.all([api<MetricsResponse>(`/metrics?${query}`), api<{ mode: "mock" | "live"; reports: ReportSnapshot[] }>(`/reports?${query}`), api<ReportNotification[]>("/notifications")])
+      .then(([data, saved, inbox]) => { if (active && requestNumber.current === requestId) { if (data.mode !== mode || saved.mode !== mode) throw new Error("数据模式不一致，请重新登录。"); setMetrics(data); setReports(saved.reports); setNotifications(inbox); } })
+      .catch(failure => { if (active && requestNumber.current === requestId) { setMetrics(null); setReports([]); setNotifications([]); setError(errorText(failure)); } })
+      .finally(() => { if (active && requestNumber.current === requestId) setLoading(false); });
+    return () => { active = false; };
+  }, [mode, window.start, window.end, revision]);
+
+  const accounts = matchingMode ? metrics?.accounts ?? [] : [];
+  const days = useMemo(() => dailyRows(accounts), [accounts]);
+  const selectedDays = days.filter(row => period === "all" || row.date === period);
+  const totals = matchingMode && (channel === "all" || channel === "search") ? sumCounts(accounts.map(account => accountCounts(account, period === "all" ? undefined : period))) : null;
+  const rows = useMemo(() => {
+    const accountRows: ReportRow[] = accounts.map(account => ({ id: account.connectionId, name: account.accountName, channel: "search", note: `${sourceLabel(account.sourceKinds)} · ${account.authoritativeReportType || "权威粒度未设置"}`, counts: accountCounts(account, period === "all" ? undefined : period), quality: period === "all" ? account.quality : account.daily.find(day => day.date === period)?.quality ?? "missing", account }));
+    const missing: ReportRow[] = [{ id: "seo", name: "SEO 自然搜索", channel: "seo", note: "搜索数据待接入", counts: null, quality: "missing" }, { id: "geo", name: "GEO 可见性", channel: "geo", note: "采样数据待接入", counts: null, quality: "missing" }, { id: "leads", name: "线索归因", channel: "leads", note: "归因窗口与成熟期待配置", counts: null, quality: "missing" }];
+    const candidates: ReportRow[] = dimension === "date" ? selectedDays.map(row => ({ id: row.date, name: row.date, date: row.date, channel: "search", note: "权威粒度 · 按账号合并", counts: row, quality: row.quality })) : dimension === "campaign" ? accountRows : [...accountRows, ...missing];
+    return candidates.filter(row => channel === "all" || row.channel === channel).sort((a, b) => { const first = a.counts?.[sort.metric]; const second = b.counts?.[sort.metric]; if (first == null) return second == null ? 0 : 1; if (second == null) return -1; return (first - second) * (sort.ascending ? 1 : -1); });
+  }, [accounts, channel, dimension, period, selectedDays, sort]);
+  const sourceKinds = [...new Set(accounts.flatMap(account => account.sourceKinds))];
+  const batchIds = [...new Set(accounts.flatMap(account => account.batchIds))];
+  const dataQuality = accounts.length ? metrics?.quality ?? "missing" : "missing";
+  const viewReady = matchingMode && !loading && !error;
+
+  function openDetails(row: ReportRow) { setSelectedRow(row); detailsDialog.current?.showModal(); }
+  function changeView(next: "fixture" | "real") { setView(next); setStatus(""); }
   function exportCsv() {
-    const escape = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
-    const records = [
-      ["数据来源", "日期窗口", "维度", "名称", "花费(元)", "展现", "点击", "平台转化", "有效线索", "状态"],
-      ...rows.map((row) => ["隔离模拟数据", periodLabel, dimension === "channel" ? "渠道" : dimension === "campaign" ? "推广计划" : "日期", row.name, row.counts?.spend ?? "", row.counts?.impressions ?? "", row.counts?.clicks ?? "", row.counts?.platformConversions ?? "", "", row.counts ? "模拟" : "未采集"]),
-    ];
-    const blob = new Blob(["\uFEFF", records.map((record) => record.map(escape).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `模拟效果报表_${period === "all" ? "2026-09-30_2026-10-01" : period}.csv`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
-    setExportStatus(`已导出 ${rows.length} 行模拟报表`);
+    if (!viewReady || !batchIds.length) return;
+    const records: unknown[][] = [["模式", "数据来源", "批次", "日期窗口", "维度", "名称", "币种", "花费(元)", "展现", "点击", "平台转化", "有效线索", "质量", "数据截止"], ...rows.map(row => [mode, row.account ? sourceLabel(row.account.sourceKinds) : sourceLabel(sourceKinds), row.account?.batchIds.join("|") ?? batchIds.join("|"), periodLabel, dimension, row.name, row.counts?.currency, row.counts?.spend, row.counts?.impressions, row.counts?.clicks, row.counts?.platformConversions, null, row.quality, metrics?.dataCutoff])];
+    const blob = new Blob(["\uFEFF", records.map(record => record.map(csvCell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `泊冉_${mode === "mock" ? "模拟" : "真实"}_效果报表_${periodLabel.replaceAll(" — ", "_")}.csv`; document.body.appendChild(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 0); setStatus(`已导出当前筛选的 ${rows.length} 行；来源为已提交数据库批次。`);
   }
-  function changeView(next: "fixture" | "real") {
-    setView(next);
-    setExportStatus("");
+  function openImport() { setPreflight(null); setConfirmed(false); setImportError(""); importDialog.current?.showModal(); }
+  async function runPreflight() {
+    if (!selectedFixture || !connectionId || pending) return;
+    setPending(true); setImportError(""); setPreflight(null); setConfirmed(false);
+    try {
+      const result = await api<ImportPreflight>("/imports/preflight", { method: "POST", body: { connection_id: connectionId, report_type: selectedFixture.object_key.endsWith("keyword_daily") ? "keyword_daily" : "campaign_daily", object_key: selectedFixture.object_key, file_hash: selectedFixture.file_hash, window_start: selectedFixture.window_start, window_end: selectedFixture.window_end, currency: "CNY", timezone: "Asia/Shanghai", mapping: {} } });
+      if (result.mode !== "mock" || result.fileHash !== selectedFixture.file_hash) throw new Error("预检来源或版本不一致，未提交。"); setPreflight(result);
+    } catch (failure) { setImportError(errorText(failure)); } finally { setPending(false); }
   }
+  async function commitExample() {
+    if (!preflight || !selectedFixture || !confirmed || pending) return;
+    setPending(true); setImportError("");
+    try {
+      const result = await api<{ id: string; state: string; duplicate: boolean; mode: string }>(`/imports/${preflight.id}/commit`, { method: "POST", body: { expected_file_hash: preflight.fileHash, confirm_complete_window: true, revision_policy: "upsert_by_natural_key" } });
+      if (result.state !== "committed" || result.mode !== "mock") throw new Error("批次尚未提交成功。");
+      setWindow({ start: selectedFixture.window_start, end: selectedFixture.window_end }); setPeriod("all"); setRevision(value => value + 1); setStatus(result.duplicate ? "该模拟历史批次已提交，已重新读取数据库。" : "模拟历史批次已提交；统计仅使用数据库权威报表。"); importDialog.current?.close();
+    } catch (failure) { setImportError(errorText(failure)); } finally { setPending(false); }
+  }
+  const saveReport = useCallback(async () => {
+    if (!viewReady || pending) return; setPending(true); setStatus("");
+    try { const start = period === "all" ? window.start : period; const end = period === "all" ? window.end : period; const result = await api<{ id: string; revision: number; duplicate: boolean; mode: string; quality: Quality }>("/reports/generate", { method: "POST", body: { kind: start === end ? "daily" : "weekly", period_start: start, period_end: end } }); if (result.mode !== mode) throw new Error("报告模式不一致。"); setStatus(`数据库复盘已${result.duplicate ? "存在" : "保存"} · 第 ${result.revision} 版 · ${qualityLabels[result.quality]}；外部归档待接入。`); setRevision(value => value + 1); } catch (failure) { setStatus(errorText(failure)); } finally { setPending(false); }
+  }, [mode, pending, period, viewReady, window.end, window.start]);
+  async function openNotification(notification: ReportNotification) { if (!await openSnapshot(notification.report_id)) return; try { await api(`/notifications/${notification.id}/read`, { method: "POST", body: {} }); setNotifications(current => current.map(item => item.id === notification.id ? { ...item, read: true } : item)); } catch (failure) { setStatus(errorText(failure)); } }
+  async function openSnapshot(id: string) { setStatus(""); try { const saved = await api<ReportSnapshot>(`/reports/${id}`); setSelectedReport(saved); snapshotDialog.current?.showModal(); return true; } catch (failure) { setStatus(errorText(failure)); return false; } }
 
   return <>
-    <div className="ui-page-header"><div><h1>效果复盘</h1><span className="ui-status" data-tone={view === "fixture" ? "amber" : "neutral"}>{view === "fixture" ? "模拟数据" : "真实数据 · 待接入"}</span></div><div className="ui-page-actions"><button className="ui-button ui-button-secondary" type="button" onClick={() => definitionsDialog.current?.showModal()}><Icon name="file" size={15} />指标口径</button><button className="ui-button ui-button-primary" type="button" onClick={exportCsv} disabled={view === "real"}><Icon name="arrow" size={15} />{view === "fixture" ? "导出模拟 CSV" : "导出待接入"}</button></div></div>
-    <div className="ui-toolbar">
-      <div className="ui-tabs" role="group" aria-label="报告数据来源"><button type="button" aria-pressed={view === "fixture"} className={view === "fixture" ? "active" : ""} onClick={() => changeView("fixture")}>模拟报表</button><button type="button" aria-pressed={view === "real"} className={view === "real" ? "active" : ""} onClick={() => changeView("real")}>真实数据</button></div>
-      <label className="ui-field">日期窗口<select aria-label="日期窗口" value={period} onChange={(event) => { setPeriod(event.target.value); setExportStatus(""); }}><option value="all">09-30 至 10-01（2 天）</option>{dailyFixtures.map((row) => <option key={row.date} value={row.date}>{row.date}</option>)}</select></label>
-      <label className="ui-field">渠道<select aria-label="报表渠道" value={channel} onChange={(event) => { setChannel(event.target.value as Channel); setExportStatus(""); }}><option value="all">全部渠道</option><option value="search">百度搜索（模拟）</option><option value="seo">SEO 自然搜索</option><option value="geo">GEO 可见性</option><option value="leads">线索回收</option></select></label>
-      <span className="ui-toolbar-note">{periodLabel} · 人民币</span>
+    <div className="ui-page-header"><div><h1>效果复盘</h1><span className="ui-status" data-tone={mode === "mock" && matchingMode ? "amber" : "neutral"}>{loading ? "读取中" : matchingMode ? `${mode === "mock" ? "模拟数据 · " : ""}${qualityLabels[dataQuality]}` : "真实数据 · 待接入"}</span></div><div className="ui-page-actions"><button className="ui-button ui-button-secondary" type="button" onClick={() => definitionsDialog.current?.showModal()}><Icon name="file" size={15} />指标口径</button>{mode === "mock" && view === "fixture" && <button className="ui-button ui-button-secondary" type="button" onClick={openImport} disabled={pending || !fixtures.length}>导入历史样例</button>}<button className="ui-button ui-button-primary" type="button" onClick={exportCsv} disabled={!viewReady || !batchIds.length}><Icon name="arrow" size={15} />{view === "fixture" ? "导出模拟 CSV" : "导出 CSV"}</button></div></div>
+    <div className="ui-toolbar"><div className="ui-tabs" role="group" aria-label="报告数据来源"><button type="button" aria-pressed={view === "fixture"} className={view === "fixture" ? "active" : ""} onClick={() => changeView("fixture")}>模拟报表</button><button type="button" aria-pressed={view === "real"} className={view === "real" ? "active" : ""} onClick={() => changeView("real")}>真实数据</button></div>
+      <label className="ui-field">日期窗口<select aria-label="日期窗口" value={period} onChange={event => { setPeriod(event.target.value); setStatus(""); }}><option value="all">{window.start.slice(5)} 至 {window.end.slice(5)}</option>{days.map(row => <option key={row.date} value={row.date}>{row.date}</option>)}</select></label>
+      <label className="ui-field">渠道<select aria-label="报表渠道" value={channel} onChange={event => { setChannel(event.target.value as Channel); setStatus(""); }}><option value="all">全部渠道</option><option value="search">搜索推广</option><option value="seo">SEO 自然搜索</option><option value="geo">GEO 可见性</option><option value="leads">线索归因</option></select></label><span className="ui-toolbar-note">{periodLabel} · {metrics?.currency ?? "币种待确认"}</span><button className="ui-icon-button" type="button" aria-label="刷新报表数据" onClick={() => setRevision(value => value + 1)} disabled={loading || !mode}><Icon name="reset" size={16} /></button>
     </div>
-    <div className="ui-kpi-strip" aria-label="推广计划级汇总">{metricKeys.map((key) => <div className="ui-kpi" key={key}><span>{metricLabels[key]}</span><strong>{displayMetric(key, totals?.[key])}</strong><small>{key === "clicks" && totals ? `点击率 ${percentage(totals.clicks, totals.impressions)}` : key === "platformConversions" ? "平台口径 · 非有效线索" : totals ? "推广计划级模拟汇总" : "未采集"}</small></div>)}</div>
-
-    {view === "fixture" ? <>
-      <div className="ui-report-grid">
-        <section className="ui-panel"><header className="ui-panel-header"><h2>每日表现</h2><label className="ui-field"><span className="sr-only">趋势指标</span><select aria-label="趋势指标" value={metric} onChange={(event) => setMetric(event.target.value as Metric)}>{metricKeys.map((key) => <option key={key} value={key}>{metricLabels[key]}</option>)}</select></label></header><div className="ui-panel-body"><DailyChart rows={totals ? selectedDays : []} metric={metric} /></div></section>
-        <section className="ui-panel"><header className="ui-panel-header"><h2>效率与数据覆盖</h2><span className="ui-status" data-tone="amber">模拟</span></header><div className="ui-table-wrap"><table className="ui-table"><tbody><tr><th scope="row">平均点击成本</th><td>{totals && totals.clicks > 0 ? currency(totals.spend / totals.clicks) : "—"}</td></tr><tr><th scope="row">平台转化率</th><td>{totals ? percentage(totals.platformConversions, totals.clicks) : "—"}</td></tr><tr><th scope="row">每次平台转化成本</th><td>{totals && totals.platformConversions > 0 ? currency(totals.spend / totals.platformConversions) : "—"}</td></tr><tr><th scope="row">有效线索 / 成交</th><td>未采集</td></tr><tr><th scope="row">SEO / GEO 数据</th><td>未采集</td></tr><tr><th scope="row">日期覆盖</th><td>{totals ? `${selectedDays.length} 天模拟记录` : "未采集"}</td></tr></tbody></table></div></section>
-      </div>
-      <section className="ui-panel"><header className="ui-panel-header"><div className="ui-tabs" role="group" aria-label="报表汇总维度">{([{ value: "channel", label: "渠道汇总" }, { value: "campaign", label: "推广计划" }, { value: "date", label: "按日期" }] as const).map((item) => <button type="button" key={item.value} className={dimension === item.value ? "active" : ""} aria-pressed={dimension === item.value} onClick={() => { setDimension(item.value); setExportStatus(""); }}>{item.label}</button>)}</div><span className="ui-toolbar-note">{rows.length} 行 · 点击列名排序</span></header>
-        <div className="ui-table-wrap"><table className="ui-table"><thead><tr><th scope="col">{dimension === "channel" ? "渠道" : dimension === "campaign" ? "推广计划" : "日期"}</th>{metricKeys.map((key) => <th scope="col" key={key} aria-sort={sort.metric === key ? sort.ascending ? "ascending" : "descending" : "none"}><button type="button" className="ui-table-sort" aria-label={`按${metricLabels[key]}排序`} onClick={() => setSort({ metric: key, ascending: sort.metric === key ? !sort.ascending : false })}>{metricLabels[key]}<span aria-hidden="true">{sort.metric === key ? sort.ascending ? " ↑" : " ↓" : " ↕"}</span></button></th>)}<th scope="col">点击率</th><th scope="col">有效线索</th><th scope="col">状态</th><th scope="col">操作</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td><strong>{row.name}</strong><small>{row.note}</small></td><td>{displayMetric("spend", row.counts?.spend)}</td><td>{displayMetric("impressions", row.counts?.impressions)}</td><td>{displayMetric("clicks", row.counts?.clicks)}</td><td>{displayMetric("platformConversions", row.counts?.platformConversions)}</td><td>{row.counts ? percentage(row.counts.clicks, row.counts.impressions) : "—"}</td><td>—</td><td><span className="ui-status" data-tone={row.counts ? "amber" : "neutral"}>{row.counts ? "模拟" : "未采集"}</span></td><td><button type="button" className="ui-button ui-button-secondary" aria-label={`查看${row.name}明细`} onClick={() => openDetails(row)}>明细</button></td></tr>)}{rows.length === 0 && <tr><td colSpan={9}>当前筛选没有采集记录。可切换渠道或汇总维度。</td></tr>}</tbody></table></div>
-        <footer className="ui-panel-footer"><span>仅推广计划级数据参与汇总；关键词明细不重复累计。</span><span role="status" aria-live="polite">{exportStatus || "固定模拟数据 · 真实执行关闭"}</span></footer>
+    {error && <div className="ui-panel-footer" role="alert">{error}<button type="button" className="ui-button ui-button-secondary" onClick={() => { if (!mode) location.reload(); else setRevision(value => value + 1); }}>重试读取</button></div>}
+    <div className="ui-kpi-strip" aria-label="权威粒度汇总">{metricKeys.map(key => <div className="ui-kpi" key={key}><span>{metricLabels[key]}</span><strong>{displayMetric(key, totals?.[key], totals?.currency)}</strong><small>{key === "clicks" && totals ? `点击率 ${percentage(totals.clicks, totals.impressions)}` : key === "platformConversions" ? "平台口径 · 非有效线索" : batchIds.length ? `${sourceLabel(sourceKinds)} · 完整窗口才汇总` : "未采集"}</small></div>)}</div>
+    {matchingMode ? <>
+      <div className="ui-report-grid"><section className="ui-panel"><header className="ui-panel-header"><h2>每日表现</h2><label className="ui-field"><span className="sr-only">趋势指标</span><select aria-label="趋势指标" value={metric} onChange={event => setMetric(event.target.value as Metric)}>{metricKeys.map(key => <option key={key} value={key}>{metricLabels[key]}</option>)}</select></label></header><div className="ui-panel-body"><DailyChart rows={channel === "all" || channel === "search" ? selectedDays : []} metric={metric} mock={mode === "mock"} /></div></section>
+        <section className="ui-panel"><header className="ui-panel-header"><h2>效率与数据覆盖</h2><span className="ui-status" data-tone={qualityTone(dataQuality)}>{qualityLabels[dataQuality]}</span></header><div className="ui-table-wrap"><table className="ui-table"><tbody><tr><th scope="row">平均点击成本</th><td>{totals?.spend != null && totals.clicks != null && totals.clicks > 0 ? money(totals.spend / totals.clicks, totals.currency) : "—"}</td></tr><tr><th scope="row">平台转化率</th><td>{totals ? percentage(totals.platformConversions, totals.clicks) : "—"}</td></tr><tr><th scope="row">每次平台转化成本</th><td>{totals?.spend != null && totals.platformConversions != null && totals.platformConversions > 0 ? money(totals.spend / totals.platformConversions, totals.currency) : "—"}</td></tr><tr><th scope="row">有效线索 / 成交</th><td>归因未配置</td></tr><tr><th scope="row">SEO / GEO 数据</th><td>未采集</td></tr><tr><th scope="row">日期覆盖</th><td>{selectedDays.filter(day => day.quality === "complete").length} / {selectedDays.length} 天完整</td></tr></tbody></table></div></section></div>
+      <section className="ui-panel"><header className="ui-panel-header"><div className="ui-tabs" role="group" aria-label="报表汇总维度">{([{ value: "channel", label: "渠道汇总" }, { value: "campaign", label: "推广计划" }, { value: "date", label: "按日期" }] as const).map(item => <button type="button" key={item.value} className={dimension === item.value ? "active" : ""} aria-pressed={dimension === item.value} onClick={() => { setDimension(item.value); setStatus(""); }}>{item.label}</button>)}</div><span className="ui-toolbar-note">{rows.length} 行 · 点击列名排序</span></header>
+        <div className="ui-table-wrap"><table className="ui-table"><thead><tr><th scope="col">{dimension === "date" ? "日期" : dimension === "campaign" ? "账号 · 权威计划级汇总" : "渠道 / 账号"}</th>{metricKeys.map(key => <th scope="col" key={key} aria-sort={sort.metric === key ? sort.ascending ? "ascending" : "descending" : "none"}><button type="button" className="ui-table-sort" aria-label={`按${metricLabels[key]}排序`} onClick={() => setSort({ metric: key, ascending: sort.metric === key ? !sort.ascending : false })}>{metricLabels[key]}<span aria-hidden="true">{sort.metric === key ? sort.ascending ? " ↑" : " ↓" : " ↕"}</span></button></th>)}<th scope="col">点击率</th><th scope="col">有效线索</th><th scope="col">质量</th><th scope="col">操作</th></tr></thead><tbody>{rows.map(row => <tr key={row.id}><td><strong>{row.name}</strong><small>{row.note}</small></td>{metricKeys.map(key => <td key={key}>{displayMetric(key, row.counts?.[key], row.counts?.currency)}</td>)}<td>{row.counts ? percentage(row.counts.clicks, row.counts.impressions) : "—"}</td><td>—</td><td><span className="ui-status" data-tone={qualityTone(row.quality)}>{qualityLabels[row.quality]}</span></td><td><button type="button" className="ui-button ui-button-secondary" aria-label={`查看${row.name}明细`} onClick={() => openDetails(row)}>明细</button></td></tr>)}{rows.length === 0 && <tr><td colSpan={9}>当前筛选没有已提交的采集记录。</td></tr>}</tbody></table></div><footer className="ui-panel-footer"><span>仅账号指定的权威粒度参与汇总；关键词不重复累计。</span><span role="status" aria-live="polite">{status || (batchIds.length ? `${sourceLabel(sourceKinds)} · ${batchIds.length} 个持久批次` : "尚无已提交批次")}</span></footer>
       </section>
-    </> : <section className="ui-panel"><header className="ui-panel-header"><h2>数据接入状态</h2><Link className="ui-button ui-button-secondary" href="/settings">连接设置<Icon name="arrow" size={15} /></Link></header><div className="ui-table-wrap"><table className="ui-table"><thead><tr><th>数据源</th><th>最近采集</th><th>状态</th><th>缺失指标</th></tr></thead><tbody>{[["search", "百度搜索", "花费、展现、点击、平台转化"], ["seo", "SEO 自然搜索", "自然搜索流量、排名"], ["geo", "GEO 可见性", "采样批次、命中与引用"], ["leads", "线索回收", "有效线索、客户、成交"]].filter(([key]) => channel === "all" || key === channel).map(([key, name, missing]) => <tr key={key}><td><strong>{name}</strong></td><td>—</td><td><span className="ui-status" data-tone="neutral">待接入</span></td><td>{missing}</td></tr>)}</tbody></table></div><footer className="ui-panel-footer">尚无真实采集记录。缺失指标保持为空，平台转化不会代替业务线索。</footer></section>}
+      <section className="ui-panel"><header className="ui-panel-header"><div className="ui-tabs" role="group" aria-label="复盘与报告收件箱"><button type="button" aria-pressed={savedView === "reports"} className={savedView === "reports" ? "active" : ""} onClick={() => setSavedView("reports")}>已保存复盘</button><button type="button" aria-pressed={savedView === "inbox"} className={savedView === "inbox" ? "active" : ""} onClick={() => setSavedView("inbox")}>报告收件箱 · {notifications.filter(item => !item.read).length}</button></div><button type="button" className="ui-button ui-button-secondary" onClick={() => void saveReport()} disabled={!viewReady || pending}>保存当前窗口复盘</button></header>{savedView === "reports" ? <div className="ui-table-wrap"><table className="ui-table"><thead><tr><th>日期窗口</th><th>版本</th><th>数据质量</th><th>来源批次</th><th>操作</th></tr></thead><tbody>{reports.map(report => <tr key={report.id}><td>{dateLabel(report.period_start)} — {dateLabel(report.period_end)}</td><td>第 {report.revision} 版</td><td><span className="ui-status" data-tone={qualityTone(report.quality)}>{qualityLabels[report.quality]}</span></td><td>{report.source_batch_ids.length} 个</td><td><button className="ui-button ui-button-secondary" type="button" onClick={() => void openSnapshot(report.id)}>查看复盘</button></td></tr>)}{!reports.length && <tr><td colSpan={5}>{loading ? "正在读取数据库复盘…" : "当前窗口尚未保存复盘。"}</td></tr>}</tbody></table></div> : <div className="ui-table-wrap"><table className="ui-table"><thead><tr><th>报告窗口</th><th>版本</th><th>数据质量</th><th>送达 / 阅读</th><th>操作</th></tr></thead><tbody>{notifications.map(notification => <tr key={notification.id}><td>{dateLabel(notification.period_start)} — {dateLabel(notification.period_end)}<small>{notification.kind === "daily" ? "日报" : "周期复盘"}</small></td><td>第 {notification.revision} 版</td><td><span className="ui-status" data-tone={qualityTone(notification.quality)}>{qualityLabels[notification.quality]}</span></td><td>{notification.status === "succeeded" ? "站内已送达" : "站内待送达"} · {notification.read ? "已读" : "未读"}</td><td><button className="ui-button ui-button-secondary" type="button" onClick={() => void openNotification(notification)}>阅读报告</button></td></tr>)}{!notifications.length && <tr><td colSpan={5}>当前运营账号没有站内报告通知。</td></tr>}</tbody></table></div>}<footer className="ui-panel-footer">复盘保存在组织数据库；Google Drive 外部归档尚未配置。</footer></section>
+    </> : <section className="ui-panel"><header className="ui-panel-header"><h2>数据接入状态</h2><Link className="ui-button ui-button-secondary" href="/settings">连接设置<Icon name="arrow" size={15} /></Link></header><div className="ui-table-wrap"><table className="ui-table"><thead><tr><th>数据源</th><th>最近采集</th><th>状态</th><th>缺失指标</th></tr></thead><tbody>{connections.filter(connection => view === "real" ? connection.read_mode !== "mock" : connection.read_mode === "mock").map(connection => <tr key={connection.id}><td><strong>{connection.display_name}</strong><small>{connection.provider}</small></td><td>{timestamp(connection.last_success_at)}</td><td>{connection.access_status === "connected" ? "连接已配置 · 当前模式无指标" : "待接入"}</td><td>花费、展现、点击、平台转化</td></tr>)}<tr><td>{view === "real" ? "真实数据" : "模拟数据"}</td><td>—</td><td><span className="ui-status" data-tone="neutral">当前运行模式不匹配</span></td><td>切换运行环境并完成连接后读取</td></tr></tbody></table></div><footer className="ui-panel-footer">当前身份运行于{mode === "mock" ? "模拟" : mode === "live" ? "真实" : "待配置"}环境。缺失指标保持为空。</footer></section>}
 
-    <dialog className="ui-modal" ref={definitionsDialog} aria-labelledby="report-definitions-title" onClick={(event) => { if (event.target === event.currentTarget) definitionsDialog.current?.close(); }}><header><h2 id="report-definitions-title">来源与指标口径</h2><button type="button" className="ui-icon-button" aria-label="关闭指标口径" onClick={() => definitionsDialog.current?.close()}><Icon name="close" size={18} /></button></header><div className="ui-modal-body"><dl><dt>数据来源</dt><dd>两日固定模拟记录，同一百度测试计划 demo_c01；不代表实际投放或平台已接通。</dd><dt>汇总粒度</dt><dd>推广计划 × 日期。完整窗口合计：花费 ¥220、展现 2,200、点击 110、平台转化 9。关键词只作下钻，不再次加入总量。</dd><dt>计算公式</dt><dd>点击率 = 点击 ÷ 展现；平均点击成本 = 花费 ÷ 点击；平台转化率 = 平台转化 ÷ 点击；每次平台转化成本 = 花费 ÷ 平台转化。分母为 0 时保持为空。</dd><dt>线索与缺失数据</dt><dd>平台转化不代表有效线索或成交。SEO、GEO、有效线索及成交均未采集，不补成 0。</dd><dt>日期与金额</dt><dd>日期按北京时间展示，金额为人民币。CSV 仅导出当前模拟筛选结果。</dd></dl></div><footer><button type="button" className="ui-button ui-button-primary" onClick={() => definitionsDialog.current?.close()}>知道了</button></footer></dialog>
-    <dialog className="ui-drawer" ref={detailsDialog} aria-labelledby="report-details-title" onClick={(event) => { if (event.target === event.currentTarget) detailsDialog.current?.close(); }}><header><div><h2 id="report-details-title">{selectedRow?.name ?? "报表明细"}</h2><span className="ui-status" data-tone={selectedRow?.counts ? "amber" : "neutral"}>{selectedRow?.counts ? "模拟明细" : "未采集"}</span></div><button type="button" className="ui-icon-button" aria-label="关闭报表明细" onClick={() => detailsDialog.current?.close()}><Icon name="close" size={18} /></button></header><div className="ui-drawer-body">{selectedRow?.counts ? <>
-      <p>{selectedRow.date ?? periodLabel} · 百度搜索 · demo_c01</p><div className="ui-table-wrap"><table className="ui-table"><tbody>{metricKeys.map((key) => <tr key={key}><th scope="row">{metricLabels[key]}</th><td>{displayMetric(key, selectedRow.counts?.[key])}</td></tr>)}</tbody></table></div>
-      <h3>日期记录</h3><div className="ui-table-wrap"><table className="ui-table"><thead><tr><th>日期</th><th>花费</th><th>展现</th><th>点击</th><th>平台转化</th></tr></thead><tbody>{selectedDays.filter((row) => !selectedRow.date || row.date === selectedRow.date).map((row) => <tr key={row.date}><td>{row.date}</td><td>{currency(row.spend)}</td><td>{count(row.impressions)}</td><td>{row.clicks}</td><td>{row.platformConversions}</td></tr>)}</tbody></table></div>
-      {period === "all" && !selectedRow.date ? <><h3>关键词明细 · 完整两日窗口</h3><div className="ui-table-wrap"><table className="ui-table"><thead><tr><th>关键词</th><th>花费</th><th>点击</th><th>平台转化</th></tr></thead><tbody>{keywordFixtures.map((row) => <tr key={row.keyword}><td>{row.keyword}</td><td>{currency(row.spend)}</td><td>{row.clicks}</td><td>{row.platformConversions}</td></tr>)}</tbody></table></div><p className="ui-toolbar-note">关键词为计划下的诊断明细，不重复累计。</p></> : <p className="ui-toolbar-note">没有当前单日的关键词记录；完整两日窗口可查看已有模拟明细。</p>}
-    </> : <><p>{selectedRow?.note}</p><p>该渠道没有采集记录，指标保持为空。</p><Link className="ui-button ui-button-secondary" href="/settings" onClick={() => detailsDialog.current?.close()}>查看连接状态</Link></>}</div><footer><span>隔离模拟数据 · 不产生业务写入</span><button type="button" className="ui-button ui-button-secondary" onClick={() => detailsDialog.current?.close()}>关闭</button></footer></dialog>
+    <dialog className="ui-modal" ref={definitionsDialog} aria-labelledby="report-definitions-title" onClick={event => { if (event.target === event.currentTarget) definitionsDialog.current?.close(); }}><header><h2 id="report-definitions-title">来源与指标口径</h2><button type="button" className="ui-icon-button" aria-label="关闭指标口径" onClick={() => definitionsDialog.current?.close()}><Icon name="close" size={18} /></button></header><div className="ui-modal-body"><dl><dt>数据来源</dt><dd>{mode === "mock" ? "隔离模拟环境 · " : ""}{sourceLabel(sourceKinds)}；仅已提交的数据库批次参与报表，不代表平台连接或真实投放已验收。</dd><dt>汇总粒度</dt><dd>{accounts.map(account => `${account.accountName}：${account.authoritativeReportType || "未设置"}`).join("；") || "暂无启用的报表来源"}。关键词等下级报表单独保存，不叠加权威报表。</dd><dt>计算公式</dt><dd>点击率 = 点击 ÷ 展现；平均点击成本 = 花费 ÷ 点击；平台转化率 = 平台转化 ÷ 点击。缺失、过期、不完整窗口及分母为 0 时不生成完整汇总。</dd><dt>线索与缺失数据</dt><dd>平台转化不代表有效线索或成交。归因与成熟期未配置，不填 0 或计算付费线索成本。</dd><dt>数据截止</dt><dd>{timestamp(metrics?.dataCutoff)} · 日期按北京时间展示。CSV 只导出当前持久数据的筛选结果，包含批次、币种和质量。</dd></dl></div><footer><button type="button" className="ui-button ui-button-primary" onClick={() => definitionsDialog.current?.close()}>知道了</button></footer></dialog>
+    <dialog className="ui-drawer" ref={detailsDialog} aria-labelledby="report-details-title" onClick={event => { if (event.target === event.currentTarget) detailsDialog.current?.close(); }}><header><div><h2 id="report-details-title">{selectedRow?.name ?? "报表明细"}</h2><span className="ui-status" data-tone={qualityTone(selectedRow?.quality ?? "missing")}>{qualityLabels[selectedRow?.quality ?? "missing"]}</span></div><button type="button" className="ui-icon-button" aria-label="关闭报表明细" onClick={() => detailsDialog.current?.close()}><Icon name="close" size={18} /></button></header><div className="ui-drawer-body"><dl className="ui-details-list"><div><dt>日期窗口</dt><dd>{periodLabel}</dd></div><div><dt>数据来源</dt><dd>{selectedRow?.note}</dd></div><div><dt>来源水位</dt><dd>{timestamp(selectedRow?.account?.sourceWatermark)}</dd></div><div><dt>批次 ID</dt><dd>{(selectedRow?.account?.batchIds ?? batchIds).join("、") || "尚无批次"}</dd></div></dl><div className="ui-table-wrap"><table className="ui-table"><tbody>{metricKeys.map(key => <tr key={key}><th scope="row">{metricLabels[key]}</th><td>{displayMetric(key, selectedRow?.counts?.[key], selectedRow?.counts?.currency)}</td></tr>)}<tr><th scope="row">有效线索</th><td>归因未配置</td></tr></tbody></table></div><h3>每日来源记录</h3><div className="ui-table-wrap"><table className="ui-table"><thead><tr><th>日期</th><th>花费</th><th>点击</th><th>质量</th></tr></thead><tbody>{(selectedRow?.account?.daily ?? []).filter(day => !selectedRow?.date || selectedRow.date === day.date).map(day => <tr key={day.date}><td>{day.date}</td><td>{displayMetric("spend", day.spendMinor === null ? null : day.spendMinor / 100, selectedRow?.account?.currency)}</td><td>{displayMetric("clicks", day.clicks)}</td><td>{qualityLabels[day.quality]}</td></tr>)}{!selectedRow?.account && <tr><td colSpan={4}>{selectedRow?.date ? "当前按日期汇总来自上方持久批次。" : "当前维度没有采集记录。"}</td></tr>}</tbody></table></div><p className="ui-help">关键词下钻尚未提供读取接口。关键词批次不会再次计入本页汇总。</p></div><footer><button type="button" className="ui-button ui-button-secondary" onClick={() => detailsDialog.current?.close()}>关闭明细</button></footer></dialog>
+    <dialog className="ui-modal" ref={importDialog} aria-labelledby="report-import-title" onClick={event => { if (event.target === event.currentTarget && !pending) importDialog.current?.close(); }}><header><h2 id="report-import-title">导入模拟历史报表</h2><button type="button" className="ui-icon-button" aria-label="关闭历史导入" disabled={pending} onClick={() => importDialog.current?.close()}><Icon name="close" size={18} /></button></header><div className="ui-modal-body"><p className="ui-help">来源为服务器隔离测试文件。预检通过后需确认提交，数据才参与统计；不会连接或修改真实广告账号。</p><label className="ui-field">测试文件<select aria-label="测试报表文件" value={fixtureKey} disabled={pending} onChange={event => { setFixtureKey(event.target.value); setPreflight(null); setConfirmed(false); }}>{fixtures.map(fixture => <option key={fixture.object_key} value={fixture.object_key}>{fixture.object_key.endsWith("keyword_daily") ? "关键词明细" : fixture.object_key.endsWith("campaign_revision") ? "推广计划修订" : "推广计划日报"} · {fixture.window_start} 至 {fixture.window_end}</option>)}</select></label><label className="ui-field">隔离数据源<select aria-label="导入数据源" value={connectionId} disabled={pending} onChange={event => { setConnectionId(event.target.value); setPreflight(null); setConfirmed(false); }}><option value="">选择已启用的模拟报表连接</option>{eligibleConnections.map(connection => <option key={connection.id} value={connection.id}>{connection.display_name}</option>)}</select></label>{!eligibleConnections.length && <p role="status">模拟报表数据源尚未启用。请在<Link href="/settings">连接设置</Link>中配置后刷新。</p>}{preflight && <><dl className="ui-details-list"><div><dt>预检批次</dt><dd>{preflight.id}</dd></div><div><dt>行数 / 质量</dt><dd>{preflight.rowCount} 行 · {qualityLabels[preflight.quality]}</dd></div><div><dt>状态</dt><dd>{preflight.state === "committed" ? "已提交的同一批次" : preflight.state === "validated" ? "预检通过，尚未参与统计" : "预检未通过"}</dd></div></dl>{preflight.errors.map(item => <p role="alert" key={`${item.row}-${item.code}`}>第 {item.row} 行：{item.message}</p>)}{preflight.quality === "complete" && ["validated", "committed"].includes(preflight.state) && <label className="ui-field"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} disabled={pending} />确认完整日期窗口，按自然键更新模拟历史记录</label>}</>}{importError && <p role="alert">{importError}</p>}</div><footer><button className="ui-button ui-button-secondary" type="button" disabled={pending || !connectionId || !selectedFixture} onClick={() => void runPreflight()}>{pending ? "处理中…" : "预检文件"}</button><button className="ui-button ui-button-primary" type="button" disabled={pending || !confirmed || !preflight || preflight.quality !== "complete"} onClick={() => void commitExample()}>确认提交模拟批次</button></footer></dialog>
+    <dialog className="ui-drawer" ref={snapshotDialog} aria-labelledby="saved-report-title" onClick={event => { if (event.target === event.currentTarget) snapshotDialog.current?.close(); }}><header><h2 id="saved-report-title">数据库复盘 · 第 {selectedReport?.revision ?? "—"} 版</h2><button type="button" className="ui-icon-button" aria-label="关闭已保存复盘" onClick={() => snapshotDialog.current?.close()}><Icon name="close" size={18} /></button></header><div className="ui-drawer-body"><dl className="ui-details-list"><div><dt>日期窗口</dt><dd>{selectedReport ? `${dateLabel(selectedReport.period_start)} — ${dateLabel(selectedReport.period_end)}` : "—"}</dd></div><div><dt>质量</dt><dd>{qualityLabels[selectedReport?.quality ?? "missing"]}</dd></div><div><dt>数据截止</dt><dd>{timestamp(selectedReport?.data_cutoff)}</dd></div><div><dt>来源批次</dt><dd>{selectedReport?.source_batch_ids.join("、") || "无已提交批次"}</dd></div></dl><h3>已保存的事实</h3><div className="ui-table-wrap"><table className="ui-table"><thead><tr><th>来源账号</th><th>花费</th><th>点击</th><th>平台转化</th><th>质量</th></tr></thead><tbody>{selectedReport?.metrics_json.accounts.map(account => <tr key={account.connectionId}><td>{account.accountName}<small>{sourceLabel(account.sourceKinds)}</small></td><td>{displayMetric("spend", account.spendMinor === null ? null : account.spendMinor / 100, account.currency)}</td><td>{displayMetric("clicks", account.clicks)}</td><td>{displayMetric("platformConversions", account.platformConversions)}</td><td>{qualityLabels[account.quality]}</td></tr>)}{!selectedReport?.metrics_json.accounts.length && <tr><td colSpan={5}>本次复盘没有可用的采集来源。</td></tr>}</tbody></table></div><h3>数据缺口</h3>{selectedReport?.body_json.dataGaps?.map((gap, index) => <p className="ui-help" key={index}>{gap.accountName ?? "数据源"}：{qualityLabels[gap.quality ?? "missing"]}</p>)}<p className="ui-help">有效线索、成交与广告归因尚未配置。当前版本仅表示数据库事实快照，外部归档待接入。</p></div><footer><button className="ui-button ui-button-secondary" type="button" onClick={() => snapshotDialog.current?.close()}>关闭复盘</button></footer></dialog>
   </>;
 }

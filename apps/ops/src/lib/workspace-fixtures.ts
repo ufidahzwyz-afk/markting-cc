@@ -8,7 +8,7 @@ export type BusinessLine = (typeof businessLines)[number];
 export type WorkspaceThemeStatus = (typeof workspaceThemeStatuses)[number];
 export type WorkspaceTask = { id: string; label: string; done: boolean };
 export type WorkspaceTheme = {
-  id: string; title: string; businessLine: BusinessLine; status: WorkspaceThemeStatus;
+  version?: number; ownerId?: string; id: string; title: string; businessLine: BusinessLine; status: WorkspaceThemeStatus;
   audience: string; goal: string; channels: string[]; owner: string; updatedAt: string; tasks: WorkspaceTask[];
 };
 function tasks(completed: number): WorkspaceTask[] {

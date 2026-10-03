@@ -1,0 +1,23 @@
+{
+  "name": "@boran/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./queue": "./src/queue.ts",
+    "./runner": "./src/runner.ts",
+    "./scheduler": "./src/scheduler.ts"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@boran/db": "0.1.0",
+    "@boran/domain": "0.1.0",
+    "@boran/ai": "0.1.0",
+    "@boran/connectors": "0.1.0",
+    "@boran/browser-runtime": "0.1.0"
+  }
+}

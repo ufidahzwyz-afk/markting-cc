@@ -1,32 +1,64 @@
 # 泊冉市场推广自动化系统
 
-当前交付为界面确认版本，依据产品 V1 / PRD 1.2 / 业务基线 V1.4。已实现的范围是管理台界面与隔离预览；业务后端、账号接通、实际发布、广告执行及生产部署均待后续独立任务验收。
+这是产品 V1 / PRD 1.2 / 业务基线 V1.4 的本地开发测试工程。管理台已接入持久数据库：两名运营共享主题和推进任务、内容版本与官网页面、留资与线索、广告报表和复盘。后台使用持久任务、幂等键、授权复核和租约恢复。真实平台、模型网关和生产环境仍需接入及实测，工程测试通过不代表 AC35 七个完整业务日或 AC47 十六渠道已经验收。
 
-## 启动界面预览
+## Mac Studio（Apple 芯片）
 
-使用 Node 24 LTS 和 npm 11：
+安装 **Docker Desktop for Apple Silicon**，启动 Docker Desktop。在仓库根目录执行：
+
+```sh
+docker compose -f infra/compose.yaml up --build -d
+docker compose -f infra/compose.yaml ps
+docker compose -f infra/compose.yaml logs --tail=80 init ops public-site worker browser-runtime
+```
+
+- 管理台：<http://localhost:3000/overview>
+- 官网服务：<http://localhost:3001>；未发布的路径返回 404。在“内容与官网”中登记并发布批准路径后可以访问。
+- 数据库、后台任务和浏览器服务位于内部网络，没有宿主公开端口。
+
+镜像不强制 amd64，会按 Apple 芯片使用 ARM64。当前执行环境已验证 Linux 容器构建、各服务启动和 PostgreSQL 备份恢复；需要在你的 Mac 上实际运行后才能确认该机器验收。建议 Docker 至少 4 CPU、8 GB 内存、30 GB 可用空间。详见 [本地运行与部署说明](infra/README.md)。
+
+停止而保留数据：
+
+```sh
+docker compose -f infra/compose.yaml down
+```
+
+不要使用 `down -v`，除非明确要删除测试数据库和浏览器资料。
+
+## 本地功能检查
+
+1. 打开“推广主题”，新建主题并保存；设置中切换“运营 A / B”，两人读取同一数据库。旧版本修改会返回冲突，避免覆盖。
+2. 在“今日工作”保存推进备注；规划记录与外部平台执行结果分别显示。
+3. 在“内容与官网”保存多版正文、审核公开事实和许可，再登记 `/article/` 等批准路径。页面发布需要负责人启用的规则与不可变正文版本；本地结果明确标记模拟。
+4. “效果复盘”先显示数据缺口；预检报表并确认完整窗口后提交。测试样例标记为模拟历史导入，关键词明细不会重复计入计划花费。
+5. “共享线索”分别展示留资、真实线索、销售确认与会话。真实个人信息处理默认关闭，合成测试仅使用 `example.invalid` 邮箱。
+6. “连接与执行规则”保存连接、规则草稿与周期配置。未配置读取器、模型或真实回读能力时，后台记录缺口和人工待办。
+
+默认没有真实平台凭据、真实模型产物或真实广告预算。会话和能力未验收时不会显示已接通；提交回执、人工完成说明和模拟回读不代替真实成功。
+
+## 原生 Node 开发
+
+需要 Node 24 LTS、npm 11 与 PostgreSQL 17。四个独立进程必须使用同一个 PostgreSQL；PGlite 仅适用于单进程隔离开发和测试。
 
 ```sh
 npm ci
-npm run dev
+# 设置你自己的本地 PostgreSQL DATABASE_URL，再启动四个部件。
+npm run dev:services
 ```
 
-打开 http://localhost:3000/overview。预览启动器显式开启本地模拟身份，关闭所有真实外部写入。未配置身份时，生产运行默认拒绝访问内部页面与接口。
+`npm run dev` 只启动管理台，并显式初始化本地开发数据库。开发初始化仅允许 `APP_ENV=development/test` 和模拟模式。生产请求不会执行迁移、种子写入或自动退回模拟身份。
 
-主导航：今日工作 `/overview`、推广主题 `/themes`、效果复盘 `/reports`；连接与规则集中在设置。
-
-新版以工作列表为主，包含任务筛选与详情、主题新建/编辑/批量操作、模拟报表筛选与 CSV 导出。主题保存只进入当前浏览器的本地模拟空间。实际界面和独立模块验收见 [截图与验收记录](docs/ui-preview/verification.md)。
-
-## 界面验收
+## 验证与任务记录
 
 ```sh
-npm run check
+npm run typecheck
+npm test
+npm run build
 ```
 
-检查范围仅为当前界面版本：类型检查、访问控制测试及管理台生产构建。390px 与 1440px 交互检查和截图由本轮界面确认记录提供。其他目录中的暂停草稿不计入已实现能力。
+`BORAN_TEST_PG_URL` 启用独立 schema 的真实 PostgreSQL 并发、日期和恢复测试；`BORAN_TEST_OPS_URL`、`BORAN_TEST_PUBLIC_URL` 启用真实 HTTP 联调。测试不清理共享业务库。GitHub Actions 执行类型、契约生成一致性、单元/跨模块测试、真实 PostgreSQL 检查及两端生产构建。
 
-## 后续开发
+任务边界和独立验收见 [开发与联调计划](docs/development-plan.md)、[验收目录](docs/acceptance)。真实账号、受控登录代理、平台适配器 POC、模型网关、通知/Drive 外部回读、Apple Silicon 实机以及七业务日对账分别保留待验收状态。
 
-界面确认后，按 [独立任务与联调计划](docs/development-plan.md) 开发。每项分别记录实现、自动测试、真实集成证据和剩余缺口，最后执行 AC35 全流程联调及 AC47 渠道汇总验收。
-
-原始业务资料、账号凭据、联系人和浏览器会话不进入公开仓库。详细范围见 [界面确认说明](docs/preview-scope.md)。
+原始业务文档、联系人、账号密钥、Cookie、登录票据和浏览器 profile 不进入公开仓库。生产部署需要已配置组织身份和当前有效成员权限，部署默认拒绝模拟身份。

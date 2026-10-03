@@ -1,0 +1,19 @@
+{
+  "name": "@boran/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "generate": "node scripts/generate.mjs"
+  },
+  "dependencies": {
+    "ajv": "8.17.1",
+    "ajv-formats": "3.0.1"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.10.1",
+    "json-schema-to-typescript": "15.0.4"
+  }
+}

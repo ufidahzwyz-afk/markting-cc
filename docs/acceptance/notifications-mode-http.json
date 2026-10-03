@@ -1,0 +1,62 @@
+{
+  "checked_at": "2026-10-03T16:28:54.667Z",
+  "http_origin": "http://localhost:3000",
+  "engineering_fixture": true,
+  "real_integrations_verified": false,
+  "metrics_supplied": false,
+  "checks": [
+    {
+      "check": "mock_list_excludes_live_engineering_fixture",
+      "passed": true
+    },
+    {
+      "check": "operator_a_b_inbox_isolation",
+      "passed": true
+    },
+    {
+      "check": "response_row_and_meta_mode",
+      "mode": "mock",
+      "passed": true
+    },
+    {
+      "check": "cross_mode_read",
+      "status": 404,
+      "passed": true
+    },
+    {
+      "check": "a_cannot_read_b",
+      "status": 404,
+      "passed": true
+    },
+    {
+      "check": "b_cannot_read_a",
+      "status": 404,
+      "passed": true
+    },
+    {
+      "check": "a_reads_own_mock",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "b_reads_own_mock",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "rejected_cross_mode_read_has_no_read_marker",
+      "passed": true
+    }
+  ],
+  "fixtures": {
+    "marker": "engineering-notifications-mode-dd94fe94-71a0-4418-bf22-2fce5b8dfdaf",
+    "mock_report_id": "173ef85c-0b93-4c4c-a67a-2123f364e103",
+    "live_engineering_report_id": "4ea052e1-c6c4-4ee9-91a8-21e154b5e56c",
+    "mock_operator_a_notification": "80faae85-4347-4f91-8498-3f4e7d42b9e8",
+    "mock_operator_b_notification": "ad129b92-356b-4516-8a62-8a5f7f1923c7",
+    "live_engineering_notification": "3bcf7720-6d67-497d-beaa-f3ac75b641b7",
+    "retained_in_local_database": true,
+    "external_events_created": false
+  },
+  "passed": true
+}

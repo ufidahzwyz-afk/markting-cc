@@ -1,0 +1,14 @@
+.git
+node_modules
+**/node_modules
+**/.next
+.local
+**/.local
+.env
+.env.*
+!.env.example
+scratch
+artifacts
+docs/ui-preview
+*.log
+**/*.tsbuildinfo

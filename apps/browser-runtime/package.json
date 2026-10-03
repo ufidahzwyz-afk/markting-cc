@@ -1,0 +1,25 @@
+{
+  "name": "@boran/browser-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./service": "./src/service.ts",
+    "./server": "./src/server.ts",
+    "./dispatcher": "./src/dispatcher.ts"
+  },
+  "scripts": {
+    "dev": "tsx src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "@boran/db": "0.1.0",
+    "@boran/connectors": "0.1.0",
+    "@boran/domain": "0.1.0",
+    "jose": "6.1.3",
+    "playwright": "1.63.0"
+  }
+}

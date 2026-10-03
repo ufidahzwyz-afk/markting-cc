@@ -1,0 +1,29 @@
+{
+  "mode": "mock",
+  "count": 1,
+  "readPersisted": true,
+  "records": [
+    {
+      "status": "succeeded",
+      "read": true,
+      "quality": "complete"
+    }
+  ],
+  "mockKpis": [
+    "¥220.00",
+    "2,200",
+    "110",
+    "9"
+  ],
+  "realModeKpisWhileMock": [
+    "—",
+    "—",
+    "—",
+    "—"
+  ],
+  "metricsApi": {
+    "quality": "complete",
+    "spendMinor": 22000,
+    "batchCount": 1
+  }
+}

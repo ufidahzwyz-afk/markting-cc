@@ -1,0 +1,195 @@
+{
+  "runtime": "optimized Next production bundle; APP_ENV=test AUTH_MODE=mock BORAN_MODE=mock; shared PostgreSQL",
+  "buildIds": {
+    "ops": "a17HmqdGrgKwZfQQAcEbV",
+    "public": "2mqSYEXaIBKb7pmVFlh5n"
+  },
+  "initialTwelvePageCheckBuildIds": {
+    "ops": "VS77WGEOp_UwSuHclFuhn",
+    "public": "3tzQ92NrRqucHVBJeC4wS"
+  },
+  "pages": [
+    {
+      "route": "overview",
+      "desktop": {
+        "status": 200,
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "overflow": false,
+        "pageErrors": 0,
+        "apiErrors": 0
+      },
+      "mobile": {
+        "status": 200,
+        "viewport": 390,
+        "scrollWidth": 390,
+        "overflow": false,
+        "pageErrors": 0,
+        "apiErrors": 0
+      }
+    },
+    {
+      "route": "themes",
+      "desktop": {
+        "status": 200,
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "overflow": false,
+        "pageErrors": 0,
+        "apiErrors": 0
+      },
+      "mobile": {
+        "status": 200,
+        "viewport": 390,
+        "scrollWidth": 390,
+        "overflow": false,
+        "pageErrors": 0,
+        "apiErrors": 0
+      }
+    },
+    {
+      "route": "content",
+      "desktop": {
+        "status": 200,
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "overflow": false,
+        "pageErrors": 0,
+        "apiErrors": 0
+      },
+      "mobile": {
+        "status": 200,
+        "viewport": 390,
+        "scrollWidth": 390,
+        "overflow": false,
+        "pageErrors": 0,
+        "apiErrors": 0
+      }
+    },
+    {
+      "route": "leads",
+      "desktop": {
+        "status": 200,
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "overflow": false,
+        "pageErrors": 0,
+        "apiErrors": 0
+      },
+      "mobile": {
+        "status": 200,
+        "viewport": 390,
+        "scrollWidth": 390,
+        "overflow": false,
+        "pageErrors": 0,
+        "apiErrors": 0
+      }
+    },
+    {
+      "route": "reports",
+      "desktop": {
+        "status": 200,
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "overflow": false,
+        "pageErrors": 0,
+        "apiErrors": 0
+      },
+      "mobile": {
+        "status": 200,
+        "viewport": 390,
+        "scrollWidth": 390,
+        "overflow": false,
+        "pageErrors": 0,
+        "apiErrors": 0
+      }
+    },
+    {
+      "route": "settings",
+      "desktop": {
+        "status": 200,
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "overflow": false,
+        "pageErrors": 0,
+        "apiErrors": 0
+      },
+      "mobile": {
+        "status": 200,
+        "viewport": 390,
+        "scrollWidth": 390,
+        "overflow": false,
+        "pageErrors": 0,
+        "apiErrors": 0
+      }
+    }
+  ],
+  "consoleErrorCorrection": {
+    "cause": "The browser default favicon.ico returned 404 on its first visit",
+    "resolution": "Both applications now serve a valid ICO; production bundles rebuilt and services restarted",
+    "freshBrowser": [
+      {
+        "base": "http://localhost:3000",
+        "path": "/overview",
+        "status": 200,
+        "faviconStatus": 200,
+        "faviconContentType": "image/x-icon",
+        "validIcoHeader": true,
+        "consoleErrors": [],
+        "pageErrors": []
+      },
+      {
+        "base": "http://localhost:3001",
+        "path": "/privacy",
+        "status": 200,
+        "faviconStatus": 200,
+        "faviconContentType": "image/x-icon",
+        "validIcoHeader": true,
+        "consoleErrors": [],
+        "pageErrors": []
+      }
+    ]
+  },
+  "expectedNextRoutePrefetchCancellations": 57,
+  "unexpectedNetworkFailures": [],
+  "theme": {
+    "savedStatus": 201,
+    "defaultOwnerMatchesActualFirstMember": true,
+    "persistedAfterReload": true,
+    "persistedOwnerMatchesActualFirstMember": true
+  },
+  "reports": {
+    "mode": "mock",
+    "count": 1,
+    "readPersisted": true,
+    "records": [
+      {
+        "status": "succeeded",
+        "read": true,
+        "quality": "complete"
+      }
+    ],
+    "mockKpis": [
+      "¥220.00",
+      "2,200",
+      "110",
+      "9"
+    ],
+    "realModeKpisWhileMock": [
+      "—",
+      "—",
+      "—",
+      "—"
+    ],
+    "metricsApi": {
+      "quality": "complete",
+      "spendMinor": 22000,
+      "batchCount": 1
+    }
+  },
+  "publicStatus": 200,
+  "anonymousDraftPreview": 404,
+  "productionIdentityWithoutOidc": 503,
+  "passed": true,
+  "realExternalAcceptance": false
+}

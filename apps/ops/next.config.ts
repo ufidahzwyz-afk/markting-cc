@@ -8,7 +8,9 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   agentRules: false,
   devIndicators: false,
-  transpilePackages: ["@boran/ui"],
+  logging: { incomingRequests: false },
+  transpilePackages: ["@boran/ui", "@boran/domain", "@boran/contracts", "@boran/connectors", "@boran/ai", "@boran/db"],
+  serverExternalPackages: ["pg", "@electric-sql/pglite"],
   images: { remotePatterns: [] },
 };
 

@@ -1,0 +1,29 @@
+{
+  "name": "@boran/domain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core.ts",
+    "./execution": "./src/execution.ts",
+    "./authz": "./src/authz.ts",
+    "./marketing": "./src/marketing.ts",
+    "./content": "./src/content.ts",
+    "./ads": "./src/ads.ts",
+    "./reporting": "./src/reporting.ts",
+    "./leads": "./src/leads.ts",
+    "./reception": "./src/reception.ts",
+    "./privacy": "./src/privacy.ts",
+    "./workspace": "./src/workspace.ts",
+    "./events": "./src/events.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@boran/db": "0.1.0",
+    "@boran/contracts": "0.1.0",
+    "@boran/connectors": "0.1.0"
+  }
+}

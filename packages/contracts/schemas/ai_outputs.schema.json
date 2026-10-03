@@ -1,0 +1,2634 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://boran.example.invalid/schemas/ai_outputs.v2.json",
+  "title": "泊冉固定 AI 流程输出 · PRD1.2 / Schema v2",
+  "description": "模型仅生成受约束提议和基于输入的报告解释。数字由SQL提供；source_versions、已有实体ID、账号/平台档案/规则及执行状态必须来自输入允许集合并由服务端逐一核验。新主张、洞察、选题和素材版本使用本次proposal_key，再由服务端分配UUID。结构合法不等于事实核实、公开许可、授权、实际媒体完整或发布成功。source_watch/publish_content/baidu_execute/metrics_collect 为确定性执行步骤，不由模型直接调用平台、SQL或改变规则。",
+  "x-business-baseline": "业务方案V1.4 + 用户最新确认及补充资料 / PRD1.2",
+  "x-runtime-semantic-validation": [
+    "source_versions引用必须在输入可读的同组织快照集合中；复制revision、retrieved_at和coverage，与真实水位一致，未覆盖范围不得声称读取。",
+    "所有已有UUID须在相应输入允许集合且同org；proposal_key在本次相关集合唯一；claim_key、insight_key、block_index、targets、policy_version_id必须可解引用。",
+    "decision confirmed/revoked必须有匹配的可定位用户表达，proposed为讨论想法；supersedes链不能循环或引用撤销后已失效事实。",
+    "引用原始竞品公开宣传只证明观察到该宣传，不证明其内部预算、转化或实际能力；fact和inference分别展示。",
+    "ready洞察至少有效可定位证据；自动排期要求证据/公开许可、已批准业务范围、当前规则、账号、窗口和频次通过；模型auto_schedule_candidate不是执行授权。",
+    "平台目标账号与platform_profile_version匹配，规则来源/核对时间和首轮样稿有效；素材声明不替代实际media_assets ready、hash、尺寸/格式和公开许可核验。",
+    "claim_refs.block_index在正文范围内；文本中的事实均有支持主张，内部读取不等于公开许可。分镜时长与字幕时间有序且end_ms>start_ms。",
+    "executed_actions只复制已存在的真实状态；succeeded须外部结果核验。report数字、data_cutoff、batch、动作结果逐项与确定性输入一致；externally_completed不计自动验收。",
+    "规则撤销/收紧、事实撤回、账号失效或源质量不足时相关任务进入blocked/needs_human并通知；不能把结构修复或降级人工执行当作完成。",
+    "百度动作wire action_type=ads.update/ads.pause；create/update/enable/pause及entity_level逐项检查负责人规则中的allowed_ad_operations/allowed_ad_entity_levels，不能用ads.update隐含全部操作。",
+    "insight模型priority_score固定null，初始定性优先级依据由服务端核验；数字评分仅在已批准真实线索校准规则后计算，未校准分数不能自动调预算/淘汰。",
+    "industry_key/product_family_key/domain_keys仅来自输入当前业务主数据；7核心行业分别保留，未知行业/persona不推断。项目制造相关3表述映射同一业务分类。",
+    "5500+只复用已确认固定口径及来源，四品牌复用主授权，官网案例仅原文事实范围；YonWork与WorkBuddy禁止混写，DMS/QMS pending不得公开推广。",
+    "接待只输入脱敏消息；reply_text不得回显手机/微信/邮箱/客户PII。每轮最多一个问题、沉默最多两次、已留联系方式停止索取；直接身份询问如实答，明确要求人工才handoff。",
+    "reception_reply是受约束提议，发送前按会话version/当前持续授权/隐私启用/事实SOP门槛重新校验。模型不能创建真实联系方式、升级真实线索或宣称已送达。",
+    "公开广告性质、承诺语境、价格限制、证据/品牌/图片、落地页与下一级链接及移动转化检查独立；无法核验即阻止。新稿新hash可以重新匹配当前持续规则，不能要求每稿复制旧hash授权。"
+  ],
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "proposal_key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,79}$",
+      "description": "仅本次输出内的稳定引用键；服务端分配持久 UUID，不由模型伪造。"
+    },
+    "source_version_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_version_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "document_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "source_kind": {
+          "type": "string",
+          "enum": [
+            "market_public",
+            "competitor_public",
+            "mac_drive",
+            "chatgpt",
+            "other"
+          ]
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "retrieved_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "complete",
+                "partial",
+                "unknown"
+              ]
+            },
+            "scope": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "start_locator": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "end_locator": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "minItems": 0,
+              "maxItems": 20
+            }
+          },
+          "required": [
+            "status",
+            "scope",
+            "start_locator",
+            "end_locator",
+            "gaps"
+          ]
+        }
+      },
+      "required": [
+        "source_version_id",
+        "document_id",
+        "source_kind",
+        "revision",
+        "retrieved_at",
+        "coverage"
+      ],
+      "description": "复制输入中不可变 source_versions 及来源范围；覆盖完整只表示指定采集范围，不表示全网、全部Mac或全部聊天。"
+    },
+    "locator": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "web",
+            "document",
+            "message",
+            "sheet",
+            "other"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "description": "必须能回到输入快照的页面、段落、消息或单元格；不得编造消息ID。"
+    },
+    "decision_evidence_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_version_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "locator": {
+          "$ref": "#/$defs/locator"
+        },
+        "actor": {
+          "const": "user"
+        }
+      },
+      "required": [
+        "source_version_id",
+        "locator",
+        "actor"
+      ],
+      "description": "用户确认或撤销表达，不以助手的总结作为用户批准。"
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "claim_key": {
+          "$ref": "#/$defs/proposal_key"
+        },
+        "claim_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "claim_text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "source_version_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "locator": {
+          "$ref": "#/$defs/locator"
+        },
+        "assertion_type": {
+          "type": "string",
+          "enum": [
+            "fact",
+            "inference",
+            "decision"
+          ]
+        },
+        "decision_status": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "proposed",
+                "confirmed",
+                "revoked",
+                "disputed"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decision_evidence_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/decision_evidence_ref"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "supersedes_claim_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inference_rationale": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "claim_key",
+        "claim_id",
+        "claim_text",
+        "source_version_id",
+        "locator",
+        "assertion_type",
+        "decision_status",
+        "decision_evidence_ref",
+        "supersedes_claim_id",
+        "inference_rationale"
+      ],
+      "description": "已有claim_id仅从输入允许集合选择；新主张claim_id=null。输出是待校验提议，不能自行标为verified或公开许可allowed。",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "assertion_type": {
+                "const": "decision"
+              }
+            },
+            "required": [
+              "assertion_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "decision_status": {
+                "type": "string",
+                "enum": [
+                  "proposed",
+                  "confirmed",
+                  "revoked",
+                  "disputed"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "decision_status": {
+                "type": "null"
+              },
+              "decision_evidence_ref": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "assertion_type": {
+                "const": "decision"
+              },
+              "decision_status": {
+                "type": "string",
+                "enum": [
+                  "confirmed",
+                  "revoked"
+                ]
+              }
+            },
+            "required": [
+              "assertion_type",
+              "decision_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "decision_evidence_ref": {
+                "$ref": "#/$defs/decision_evidence_ref"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "assertion_type": {
+                "const": "inference"
+              }
+            },
+            "required": [
+              "assertion_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "inference_rationale": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            }
+          }
+        }
+      ]
+    },
+    "policy_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policy_version_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "policy_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "payload_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "policy_version_id",
+        "policy_id",
+        "payload_hash"
+      ],
+      "description": "只引用输入提供的负责人已批准规则版本；模型不得生成、扩张或激活规则。执行前仍由服务端确定性重新匹配。"
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "platform_account_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "platform_profile_version_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "format": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        }
+      },
+      "required": [
+        "platform_account_id",
+        "platform_profile_version_id",
+        "format"
+      ],
+      "description": "目标账号、风格样稿与平台规则版本均来自输入；format须在该档案allowed_formats中。"
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "paragraph",
+            "bullet",
+            "heading"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 3000
+        }
+      },
+      "required": [
+        "type",
+        "text"
+      ]
+    },
+    "claim_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "block_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "claim_key": {
+          "$ref": "#/$defs/proposal_key"
+        }
+      },
+      "required": [
+        "block_index",
+        "claim_key"
+      ]
+    },
+    "cta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50
+        },
+        "href": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "navigate",
+            "scroll_to_form",
+            "contact"
+          ]
+        }
+      },
+      "required": [
+        "label",
+        "href",
+        "action"
+      ]
+    },
+    "asset_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "request_key": {
+          "$ref": "#/$defs/proposal_key"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "image",
+            "cover",
+            "video",
+            "audio",
+            "script",
+            "storyboard",
+            "subtitle",
+            "text",
+            "other"
+          ]
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "brief": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 3000
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "height": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "duration_seconds": {
+          "anyOf": [
+            {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "request_key",
+        "kind",
+        "purpose",
+        "brief",
+        "required",
+        "mime_type",
+        "width",
+        "height",
+        "duration_seconds"
+      ],
+      "description": "媒体生成任务需求，不是已生成媒体。实际媒体由素材服务产出、hash与公开许可核验后关联media_assets。"
+    },
+    "material_copy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cover_text": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "image_texts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "minItems": 0,
+          "maxItems": 20
+        },
+        "faq": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "question": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "answer": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "question",
+              "answer"
+            ]
+          },
+          "minItems": 0,
+          "maxItems": 20
+        },
+        "spoken_script": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "storyboard": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "shot": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "visual": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "spoken_text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "duration_seconds": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "shot",
+              "visual",
+              "spoken_text",
+              "duration_seconds"
+            ]
+          },
+          "minItems": 0,
+          "maxItems": 60
+        },
+        "subtitles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "start_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "end_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              }
+            },
+            "required": [
+              "start_ms",
+              "end_ms",
+              "text"
+            ]
+          },
+          "minItems": 0,
+          "maxItems": 200
+        }
+      },
+      "required": [
+        "cover_text",
+        "image_texts",
+        "faq",
+        "spoken_script",
+        "storyboard",
+        "subtitles"
+      ],
+      "description": "按平台形式生成对应文案；视频口播、分镜和字幕不等于视频成品，未需要的字段明确为空。"
+    },
+    "gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "source",
+            "coverage",
+            "fact",
+            "public_permission",
+            "platform_rule",
+            "style",
+            "asset",
+            "account",
+            "policy",
+            "metrics",
+            "other"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "reference_key": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "next_step": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        }
+      },
+      "required": [
+        "kind",
+        "description",
+        "reference_key",
+        "next_step"
+      ]
+    },
+    "insight": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "proposal_key": {
+          "$ref": "#/$defs/proposal_key"
+        },
+        "insight_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "business_line": {
+          "type": "string",
+          "enum": [
+            "yonyou",
+            "seeyon",
+            "shared"
+          ]
+        },
+        "customer_problem": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "opportunity": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "inference_text": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 3000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "priority_score": {
+          "type": "null",
+          "description": "固定null。初始qualitative不计算虚假精度；仅服务端在numeric_calibrated批准后可产生展示分值，模型不能输出数值或执行授权。"
+        },
+        "priority_reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "data_cutoff": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "claim_key": {
+                "$ref": "#/$defs/proposal_key"
+              },
+              "relation": {
+                "type": "string",
+                "enum": [
+                  "supports",
+                  "contradicts",
+                  "context"
+                ]
+              }
+            },
+            "required": [
+              "claim_key",
+              "relation"
+            ]
+          },
+          "minItems": 1,
+          "maxItems": 50
+        },
+        "candidate_state": {
+          "type": "string",
+          "enum": [
+            "candidate",
+            "ready",
+            "blocked"
+          ]
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/gap"
+          },
+          "minItems": 0,
+          "maxItems": 30
+        },
+        "next_step": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        }
+      },
+      "required": [
+        "proposal_key",
+        "insight_id",
+        "summary",
+        "business_line",
+        "customer_problem",
+        "opportunity",
+        "inference_text",
+        "priority_score",
+        "priority_reason",
+        "data_cutoff",
+        "evidence",
+        "candidate_state",
+        "gaps",
+        "next_step"
+      ],
+      "description": "模型提出定性优先级依据和可定位证据。服务端核验事实/许可/范围并选择P0/P1/P2；未校准数值不驱动排期或付费调优，但符合持续执行规则的定性选题可自动推进。"
+    },
+    "topic": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "proposal_key": {
+          "$ref": "#/$defs/proposal_key"
+        },
+        "topic_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "insight_key": {
+          "$ref": "#/$defs/proposal_key"
+        },
+        "business_line": {
+          "type": "string",
+          "enum": [
+            "yonyou",
+            "seeyon",
+            "shared"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "audience": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "problem": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "offer": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "angle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "keywords": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "minItems": 0,
+          "maxItems": 30
+        },
+        "claim_keys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/proposal_key"
+          },
+          "minItems": 1,
+          "maxItems": 50
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/target"
+          },
+          "minItems": 1,
+          "maxItems": 20
+        },
+        "priority": {
+          "type": "integer",
+          "enum": [
+            0,
+            1,
+            2
+          ],
+          "description": "0/1/2候选标签P0/P1/P2；服务端核验定性理由与证据后排序。数值校准是可选后续配置，不预设75/50阈值。"
+        },
+        "priority_reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "policy_version_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "proposed_scheduled_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "auto_schedule_candidate": {
+          "type": "boolean"
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/gap"
+          },
+          "minItems": 0,
+          "maxItems": 30
+        },
+        "metric_keys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "minItems": 1,
+          "maxItems": 20
+        },
+        "industry_key": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "product_family_key": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "domain_keys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "maxItems": 22
+        }
+      },
+      "required": [
+        "proposal_key",
+        "topic_id",
+        "insight_key",
+        "business_line",
+        "title",
+        "audience",
+        "problem",
+        "offer",
+        "angle",
+        "keywords",
+        "claim_keys",
+        "targets",
+        "priority",
+        "priority_reason",
+        "policy_version_id",
+        "proposed_scheduled_at",
+        "auto_schedule_candidate",
+        "gaps",
+        "metric_keys",
+        "industry_key",
+        "product_family_key",
+        "domain_keys"
+      ],
+      "description": "规则内选题由服务端自动进入plan_cycle及排期；模型仅提出账号/时间，不能替代频次、窗口、预算和规则匹配。"
+    },
+    "platform_variant": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "proposal_key": {
+          "$ref": "#/$defs/proposal_key"
+        },
+        "platform_account_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "platform_profile_version_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "format": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "body_blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/block"
+          },
+          "minItems": 1,
+          "maxItems": 60
+        },
+        "claim_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/claim_ref"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "cta": {
+          "$ref": "#/$defs/cta"
+        },
+        "material_copy": {
+          "$ref": "#/$defs/material_copy"
+        },
+        "asset_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/uuid"
+          },
+          "minItems": 0,
+          "maxItems": 30
+        },
+        "asset_requests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/asset_request"
+          },
+          "minItems": 0,
+          "maxItems": 30
+        },
+        "proposed_scheduled_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "policy_version_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "style_rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "validation_checks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "facts",
+              "public_permission",
+              "platform_rules",
+              "audience_style",
+              "format",
+              "assets",
+              "schedule_policy"
+            ]
+          },
+          "minItems": 1,
+          "maxItems": 10
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/gap"
+          },
+          "minItems": 0,
+          "maxItems": 30
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "minItems": 0,
+          "maxItems": 30
+        }
+      },
+      "required": [
+        "proposal_key",
+        "platform_account_id",
+        "platform_profile_version_id",
+        "format",
+        "title",
+        "body_blocks",
+        "claim_refs",
+        "cta",
+        "material_copy",
+        "asset_ids",
+        "asset_requests",
+        "proposed_scheduled_at",
+        "policy_version_id",
+        "style_rationale",
+        "validation_checks",
+        "gaps",
+        "warnings"
+      ],
+      "description": "独立的平台版本，须使用该账号档案受众、已校准风格和规则。asset_ids只能引用输入已有实际媒体；模型不得宣布检查passed或真实发布成功。"
+    },
+    "executed_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "execution_action_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "action_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "platform_account_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "blocked",
+            "executing",
+            "submitted",
+            "waiting_review",
+            "verification_pending",
+            "retry_wait",
+            "succeeded",
+            "failed",
+            "unknown",
+            "externally_completed",
+            "cancelled"
+          ]
+        },
+        "external_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "published_url": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uri",
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "verified_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "minItems": 0,
+          "maxItems": 30
+        },
+        "policy_version_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approval_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "operation": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "create",
+                "update",
+                "enable",
+                "pause"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "entity_level": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "account",
+                "campaign",
+                "unit",
+                "keyword",
+                "negative_keyword",
+                "creative"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "execution_action_id",
+        "action_type",
+        "platform_account_id",
+        "state",
+        "external_id",
+        "published_url",
+        "verified_at",
+        "evidence_refs",
+        "policy_version_id",
+        "approval_id",
+        "result_summary",
+        "operation",
+        "entity_level"
+      ],
+      "description": "只能复制输入中执行器已持久化的状态与核验证据；人工externally_completed不计自动化验收成功。",
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "policy_version_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "approval_id": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "policy_version_id": {
+                  "type": "null"
+                },
+                "approval_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "succeeded"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "verified_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "evidence_refs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1000
+                },
+                "minItems": 1,
+                "maxItems": 30
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workflow": {
+          "const": "weekly_plan"
+        },
+        "schema_version": {
+          "const": 2
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "objectives": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "maxItems": 10
+            },
+            "tasks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "business_line": {
+                    "type": "string",
+                    "enum": [
+                      "yonyou",
+                      "seeyon",
+                      "shared"
+                    ]
+                  },
+                  "audience": {
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "question": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "keywords": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 100
+                    },
+                    "maxItems": 20
+                  },
+                  "channel": {
+                    "type": "string",
+                    "maxLength": 60,
+                    "description": "显示标签；实际执行目标使用targets中的账号与档案版本。"
+                  },
+                  "deliverable": {
+                    "type": "string",
+                    "enum": [
+                      "content",
+                      "page",
+                      "ad_experiment",
+                      "evidence",
+                      "seo_review"
+                    ]
+                  },
+                  "metric_key": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "evidence_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "maxItems": 30
+                  },
+                  "assumption": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "topic_id": {
+                    "$ref": "#/$defs/uuid"
+                  },
+                  "targets": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/target"
+                    },
+                    "minItems": 1,
+                    "maxItems": 20
+                  },
+                  "policy_version_id": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/uuid"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "proposed_scheduled_at": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "auto_schedule_candidate": {
+                    "type": "boolean"
+                  },
+                  "claim_keys": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/proposal_key"
+                    },
+                    "minItems": 0,
+                    "maxItems": 50
+                  },
+                  "gaps": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/gap"
+                    },
+                    "minItems": 0,
+                    "maxItems": 30
+                  }
+                },
+                "required": [
+                  "title",
+                  "business_line",
+                  "audience",
+                  "question",
+                  "keywords",
+                  "channel",
+                  "deliverable",
+                  "metric_key",
+                  "evidence_ids",
+                  "topic_id",
+                  "targets",
+                  "policy_version_id",
+                  "proposed_scheduled_at",
+                  "auto_schedule_candidate",
+                  "claim_keys",
+                  "gaps"
+                ]
+              },
+              "maxItems": 30
+            },
+            "assumptions": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "maxItems": 20
+            },
+            "evidence_gaps": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "maxItems": 20
+            },
+            "data_cutoff": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "objectives",
+            "tasks",
+            "assumptions",
+            "evidence_gaps",
+            "data_cutoff"
+          ]
+        },
+        "source_versions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_version_ref"
+          },
+          "minItems": 0,
+          "maxItems": 200
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/claim"
+          },
+          "minItems": 0,
+          "maxItems": 200
+        },
+        "policy_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/policy_ref"
+          },
+          "minItems": 0,
+          "maxItems": 30
+        }
+      },
+      "required": [
+        "workflow",
+        "schema_version",
+        "source_versions",
+        "claims",
+        "policy_refs",
+        "output"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workflow": {
+          "const": "content_draft"
+        },
+        "schema_version": {
+          "const": 2
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 300
+            },
+            "body_blocks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "paragraph",
+                      "bullet",
+                      "heading"
+                    ]
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 3000
+                  }
+                },
+                "required": [
+                  "type",
+                  "text"
+                ]
+              },
+              "minItems": 1,
+              "maxItems": 60
+            },
+            "claim_refs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "block_index": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "claim_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "block_index",
+                  "claim_id"
+                ]
+              },
+              "maxItems": 100
+            },
+            "cta": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 50
+                },
+                "href": {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "navigate",
+                    "scroll_to_form",
+                    "contact"
+                  ]
+                }
+              },
+              "required": [
+                "label",
+                "href",
+                "action"
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "maxItems": 30
+            },
+            "topic_id": {
+              "$ref": "#/$defs/uuid"
+            },
+            "source_claim_keys": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/proposal_key"
+              },
+              "minItems": 0,
+              "maxItems": 100
+            },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/gap"
+              },
+              "minItems": 0,
+              "maxItems": 30
+            }
+          },
+          "required": [
+            "title",
+            "body_blocks",
+            "claim_refs",
+            "cta",
+            "warnings",
+            "topic_id",
+            "source_claim_keys",
+            "gaps"
+          ]
+        },
+        "source_versions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_version_ref"
+          },
+          "minItems": 0,
+          "maxItems": 200
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/claim"
+          },
+          "minItems": 0,
+          "maxItems": 200
+        },
+        "policy_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/policy_ref"
+          },
+          "minItems": 0,
+          "maxItems": 30
+        }
+      },
+      "required": [
+        "workflow",
+        "schema_version",
+        "source_versions",
+        "claims",
+        "policy_refs",
+        "output"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workflow": {
+          "const": "seo_review"
+        },
+        "schema_version": {
+          "const": 2
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "critical",
+                      "high",
+                      "medium",
+                      "low"
+                    ]
+                  },
+                  "check_key": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "evidence": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "suggested_fix": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "url",
+                  "severity",
+                  "check_key",
+                  "evidence",
+                  "suggested_fix"
+                ]
+              },
+              "maxItems": 200
+            }
+          },
+          "required": [
+            "issues"
+          ]
+        },
+        "source_versions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_version_ref"
+          },
+          "minItems": 0,
+          "maxItems": 200
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/claim"
+          },
+          "minItems": 0,
+          "maxItems": 200
+        },
+        "policy_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/policy_ref"
+          },
+          "minItems": 0,
+          "maxItems": 30
+        }
+      },
+      "required": [
+        "workflow",
+        "schema_version",
+        "source_versions",
+        "claims",
+        "policy_refs",
+        "output"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workflow": {
+          "const": "daily_report"
+        },
+        "schema_version": {
+          "const": 2
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "facts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "metric_key": {
+                    "type": "string"
+                  },
+                  "period_key": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "source_batch_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "maxItems": 30
+                  }
+                },
+                "required": [
+                  "metric_key",
+                  "period_key",
+                  "text",
+                  "source_batch_ids"
+                ]
+              },
+              "maxItems": 30
+            },
+            "hypotheses": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "verification": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "text",
+                  "verification"
+                ]
+              },
+              "maxItems": 15
+            },
+            "actions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "priority": {
+                    "type": "string",
+                    "enum": [
+                      "P0",
+                      "P1",
+                      "P2"
+                    ]
+                  },
+                  "evidence_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "maxItems": 30
+                  },
+                  "requires_data": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "title",
+                  "rationale",
+                  "priority",
+                  "evidence_ids",
+                  "requires_data"
+                ]
+              },
+              "maxItems": 15,
+              "description": "下一步优化提议；不能冒充executed_actions中的已执行结果，执行仍须确定性授权和核验。"
+            },
+            "data_gaps": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "maxItems": 30
+            },
+            "data_cutoff": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "data_quality": {
+              "type": "string",
+              "enum": [
+                "complete",
+                "partial",
+                "missing",
+                "stale",
+                "unsupported"
+              ]
+            },
+            "executed_actions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/executed_action"
+              },
+              "minItems": 0,
+              "maxItems": 100
+            },
+            "topic_feedback": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "topic_id": {
+                    "$ref": "#/$defs/uuid"
+                  },
+                  "feedback": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "metric_keys": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "minItems": 0,
+                    "maxItems": 20
+                  },
+                  "source_batch_ids": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/uuid"
+                    },
+                    "minItems": 0,
+                    "maxItems": 30
+                  },
+                  "next_step": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "topic_id",
+                  "feedback",
+                  "metric_keys",
+                  "source_batch_ids",
+                  "next_step"
+                ]
+              },
+              "minItems": 0,
+              "maxItems": 50
+            },
+            "human_tasks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "impact": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "assignee_user_id": {
+                    "$ref": "#/$defs/uuid"
+                  },
+                  "next_step": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "reason",
+                  "impact",
+                  "assignee_user_id",
+                  "next_step"
+                ]
+              },
+              "minItems": 0,
+              "maxItems": 50
+            }
+          },
+          "required": [
+            "facts",
+            "hypotheses",
+            "actions",
+            "data_gaps",
+            "data_cutoff",
+            "data_quality",
+            "executed_actions",
+            "topic_feedback",
+            "human_tasks"
+          ]
+        },
+        "source_versions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_version_ref"
+          },
+          "minItems": 0,
+          "maxItems": 200
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/claim"
+          },
+          "minItems": 0,
+          "maxItems": 200
+        },
+        "policy_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/policy_ref"
+          },
+          "minItems": 0,
+          "maxItems": 30
+        }
+      },
+      "required": [
+        "workflow",
+        "schema_version",
+        "source_versions",
+        "claims",
+        "policy_refs",
+        "output"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workflow": {
+          "const": "geo_review"
+        },
+        "schema_version": {
+          "const": 2
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mentions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "observation_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "brand_mentioned": {
+                    "type": "boolean"
+                  },
+                  "matched_alias": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "observation_id",
+                  "brand_mentioned"
+                ]
+              },
+              "maxItems": 200
+            },
+            "citations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "observation_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "official_domain_match": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "observation_id",
+                  "url",
+                  "official_domain_match"
+                ]
+              },
+              "maxItems": 200
+            },
+            "factual_checks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "statement": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "supported",
+                      "contradicted",
+                      "unknown"
+                    ]
+                  },
+                  "claim_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "maxItems": 30
+                  }
+                },
+                "required": [
+                  "statement",
+                  "status",
+                  "claim_ids"
+                ]
+              },
+              "maxItems": 100
+            },
+            "confidence": {
+              "type": "string",
+              "enum": [
+                "high",
+                "medium",
+                "low"
+              ]
+            }
+          },
+          "required": [
+            "mentions",
+            "citations",
+            "factual_checks",
+            "confidence"
+          ]
+        },
+        "source_versions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_version_ref"
+          },
+          "minItems": 0,
+          "maxItems": 200
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/claim"
+          },
+          "minItems": 0,
+          "maxItems": 200
+        },
+        "policy_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/policy_ref"
+          },
+          "minItems": 0,
+          "maxItems": 30
+        }
+      },
+      "required": [
+        "workflow",
+        "schema_version",
+        "source_versions",
+        "claims",
+        "policy_refs",
+        "output"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workflow": {
+          "const": "insight_topics"
+        },
+        "schema_version": {
+          "const": 2
+        },
+        "source_versions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_version_ref"
+          },
+          "minItems": 0,
+          "maxItems": 200
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/claim"
+          },
+          "minItems": 0,
+          "maxItems": 200
+        },
+        "policy_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/policy_ref"
+          },
+          "minItems": 0,
+          "maxItems": 30
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "data_cutoff": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "insights": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/insight"
+              },
+              "minItems": 0,
+              "maxItems": 50
+            },
+            "topics": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/topic"
+              },
+              "minItems": 0,
+              "maxItems": 50
+            },
+            "source_gaps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/gap"
+              },
+              "minItems": 0,
+              "maxItems": 50
+            }
+          },
+          "required": [
+            "data_cutoff",
+            "insights",
+            "topics",
+            "source_gaps"
+          ],
+          "description": "四源版本化证据到推广洞察及选题的AI提议；自动排期由确定性服务完成。"
+        }
+      },
+      "required": [
+        "workflow",
+        "schema_version",
+        "source_versions",
+        "claims",
+        "policy_refs",
+        "output"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workflow": {
+          "const": "platform_assets"
+        },
+        "schema_version": {
+          "const": 2
+        },
+        "source_versions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_version_ref"
+          },
+          "minItems": 0,
+          "maxItems": 200
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/claim"
+          },
+          "minItems": 0,
+          "maxItems": 200
+        },
+        "policy_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/policy_ref"
+          },
+          "minItems": 0,
+          "maxItems": 30
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "topic_id": {
+              "$ref": "#/$defs/uuid"
+            },
+            "mother_content_version_id": {
+              "$ref": "#/$defs/uuid"
+            },
+            "variants": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/platform_variant"
+              },
+              "minItems": 1,
+              "maxItems": 20
+            },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/gap"
+              },
+              "minItems": 0,
+              "maxItems": 50
+            }
+          },
+          "required": [
+            "topic_id",
+            "mother_content_version_id",
+            "variants",
+            "gaps"
+          ],
+          "description": "按首批账号对应档案生产素材文案；实际媒体生成、检查、排期、发布和回读由确定性服务完成。"
+        }
+      },
+      "required": [
+        "workflow",
+        "schema_version",
+        "source_versions",
+        "claims",
+        "policy_refs",
+        "output"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workflow": {
+          "const": "reception_reply"
+        },
+        "schema_version": {
+          "const": 2
+        },
+        "source_versions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_version_ref"
+          },
+          "minItems": 0,
+          "maxItems": 200
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/claim"
+          },
+          "minItems": 0,
+          "maxItems": 200
+        },
+        "policy_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/policy_ref"
+          },
+          "minItems": 0,
+          "maxItems": 30
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "conversation_id": {
+              "$ref": "#/$defs/uuid"
+            },
+            "conversation_version": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "reply_text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1500
+            },
+            "question_count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "reply_class": {
+              "type": "string",
+              "enum": [
+                "useful_answer",
+                "one_question",
+                "contact_value_explanation",
+                "identity_disclosure",
+                "silent_followup",
+                "handoff_acknowledgement",
+                "contact_captured_acknowledgement"
+              ]
+            },
+            "handoff_requested": {
+              "type": "boolean"
+            },
+            "stop_contact_request": {
+              "type": "boolean"
+            },
+            "claim_keys": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/proposal_key"
+              },
+              "maxItems": 30
+            },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/gap"
+              },
+              "maxItems": 20
+            }
+          },
+          "required": [
+            "conversation_id",
+            "conversation_version",
+            "reply_text",
+            "question_count",
+            "reply_class",
+            "handoff_requested",
+            "stop_contact_request",
+            "claim_keys",
+            "gaps"
+          ],
+          "description": "爱番番接待提议，实际收发和SOP状态机由确定性服务负责。原PII留在采集服务，模型仅可见脱敏上下文。"
+        }
+      },
+      "required": [
+        "workflow",
+        "schema_version",
+        "source_versions",
+        "claims",
+        "policy_refs",
+        "output"
+      ]
+    }
+  ]
+}
