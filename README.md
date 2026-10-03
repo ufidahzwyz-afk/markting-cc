@@ -4,7 +4,14 @@
 
 ## Mac Studio（Apple 芯片）
 
-安装 **Docker Desktop for Apple Silicon**，启动 Docker Desktop。在仓库根目录执行：
+安装 **Docker Desktop for Apple Silicon**，启动 Docker Desktop。首次下载当前集成版本：
+
+```sh
+git clone --branch codex/v1-parallel-development --single-branch https://github.com/ufidahzwyz-afk/markting-cc.git
+cd markting-cc
+```
+
+已有仓库时先获取并切换到 `codex/v1-parallel-development`。在仓库根目录执行：
 
 ```sh
 docker compose -f infra/compose.yaml up --build -d
@@ -57,7 +64,7 @@ npm test
 npm run build
 ```
 
-`BORAN_TEST_PG_URL` 启用独立 schema 的真实 PostgreSQL 并发、日期和恢复测试；`BORAN_TEST_OPS_URL`、`BORAN_TEST_PUBLIC_URL` 启用真实 HTTP 联调。测试不清理共享业务库。GitHub Actions 执行类型、契约生成一致性、单元/跨模块测试、真实 PostgreSQL 检查及两端生产构建。
+`BORAN_TEST_PG_URL` 启用独立 schema 的真实 PostgreSQL 并发、日期和恢复测试；`BORAN_TEST_OPS_URL`、`BORAN_TEST_PUBLIC_URL` 启用真实 HTTP 联调；`BORAN_TEST_PROTECTED_URL` 检查缺省生产身份阻断，`BORAN_NOTIFICATIONS_HTTP_BASE_URL` 配合测试 PG 检查通知模式隔离。测试不清理共享业务库。GitHub Actions 执行类型、契约生成一致性、单元/跨模块测试、真实 PostgreSQL 检查及两端生产构建。
 
 任务边界和独立验收见 [开发与联调计划](docs/development-plan.md)、[验收目录](docs/acceptance)。真实账号、受控登录代理、平台适配器 POC、模型网关、通知/Drive 外部回读、Apple Silicon 实机以及七业务日对账分别保留待验收状态。
 

@@ -25,3 +25,10 @@ test('notification responses require explicit mode in both list rows and respons
  const {mode:_mode,...unlabelled}=item;assert.throws(()=>validateApiRequest('NotificationsRead',{data:[unlabelled],meta:{request_id:uuid(),mode:'mock'}}));
  validateApiRequest('NotificationMarkedRead',{data:{id:item.id,read:true},meta:{request_id:uuid(),mode:'mock',idempotency_replay:false}});
 });
+
+test('notification external delivery pause is an optional explicit boolean',()=>{
+ const item={id:uuid(),report_id:uuid(),channel:'in_app',status:'pending',created_at:'2026-10-03T00:00:00Z',sent_at:null,kind:'daily',period_start:'2026-10-01',period_end:'2026-10-01',revision:1,quality:'missing',read:false,mode:'mock'};
+ const meta={request_id:uuid(),mode:'mock'};
+ for(const external_delivery_paused of [false,true])validateApiRequest('NotificationsRead',{data:[{...item,external_delivery_paused}],meta});
+ assert.throws(()=>validateApiRequest('NotificationsRead',{data:[{...item,external_delivery_paused:'false'}],meta}));
+});

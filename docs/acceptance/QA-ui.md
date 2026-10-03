@@ -28,6 +28,12 @@
 
 生产默认身份保护服务在未配置真实 OIDC 时返回 503；公开隐私页返回 200，匿名草稿预览返回 404。实际公网域名、真实身份服务、真实平台回读与真实 PII 生命周期不在本次本地通过范围内。最终截图、JSON 和本文已冻结，未修改产品功能。
 
+## 总停写提示专项回归
+
+2026-10-03 16:56 UTC，新优化生产构建 `yBP-Gmcjgn_2yq5fcN15f`，使用明确标记 `engineering_test` 的 SQL 模拟报告、本人站内通知及 email 通知，创建同组织、同模式、执行时间在未来的 `WRITE_DISABLED` 队列记录。实际生产 HTTP 返回 `external_delivery_paused=true`，390px 收件箱显示“外送与归档已暂停”；删除本次测试队列缺口后，返回 `false`，该提示消失。两阶段新浏览器 context 均无控制台或页面异常、失败业务 API、文档水平溢出；送达列在表格自身横向滚动后可见。
+
+此验证没有调用真实外部平台，也没有改变总停写开关或恢复外送。本次两条队列及两条通知已移除，只保留不可变的空工程报告，既有业务记录未修改。原 12 项生产验收 JSON 保留，专项结果见 [暂停提示验收 JSON](ui-evidence/report-external-pause-verification.json)、[提示出现的手机截图](ui-evidence/report-external-paused-mobile.png) 和 [清除测试缺口后的手机截图](ui-evidence/report-external-gap-cleared-mobile.png)。专项证据已冻结。
+
 ![桌面内容与官网登记](ui-evidence/desktop-content-draft.png)
 
 ![手机主题列表](ui-evidence/mobile-themes.png)

@@ -4063,6 +4063,8 @@ export interface components {
                 read: boolean;
                 /** @enum {unknown} */
                 mode: "mock" | "live";
+                /** @description 外部投递因全局或组织停写而暂停；不影响当前站内通知记录读取。 */
+                external_delivery_paused?: boolean;
             }[];
             meta: components["schemas"]["Meta"] & unknown;
         };

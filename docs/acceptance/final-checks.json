@@ -1,0 +1,47 @@
+{
+  "checkedAt": "2026-10-03T16:58:58.166859+00:00",
+  "sourceSnapshot": "frozen post-stop-control runtime files",
+  "fullTests": {
+    "result": "passed",
+    "tests": 264,
+    "pass": 264,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "realPostgreSQL": true,
+    "isolatedSchemas": true,
+    "actualChromium": true,
+    "opsAndPublicOptimizedHTTP": true,
+    "productionIdentityGuardHTTP": true,
+    "notificationModeIsolationHTTP": true
+  },
+  "typecheck": {
+    "result": "passed",
+    "workspaces": 10
+  },
+  "productionBuild": {
+    "result": "passed",
+    "applications": [
+      "ops",
+      "public-site"
+    ]
+  },
+  "logSHA256": {
+    "fullTests": "bd5af4fbd7c47103f8e945c2b5bca95100cfe102964ae453d40a32444a2fbaed",
+    "typecheck": "2a45aba55e728b6c8e3f7def026098ad563e32b3800664c3c02855ec47d47b9e",
+    "build": "b7a38afd29f08c85e1fb6b48d4ced20a7b677f2fe0a240ea355ba71a7f53d2f6"
+  },
+  "serviceModes": {
+    "APP_ENV": "test",
+    "AUTH_MODE": "mock",
+    "BORAN_MODE": "mock",
+    "externalWrites": false
+  },
+  "realExternalPlatformCalls": false,
+  "limitations": [
+    "Apple Silicon hardware not verified",
+    "real platform, model, OIDC, external notification and Drive integrations pending",
+    "AC35 seven complete business days and AC47 sixteen channels pending"
+  ]
+}

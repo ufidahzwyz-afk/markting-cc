@@ -17618,6 +17618,10 @@
                     "mock",
                     "live"
                   ]
+                },
+                "external_delivery_paused": {
+                  "type": "boolean",
+                  "description": "外部投递因全局或组织停写而暂停；不影响当前站内通知记录读取。"
                 }
               },
               "required": [

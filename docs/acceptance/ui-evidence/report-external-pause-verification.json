@@ -1,0 +1,65 @@
+{
+  "checked_at": "2026-10-03T16:56:43.775Z",
+  "engineering_fixture": true,
+  "mode": "mock",
+  "real_external_calls": false,
+  "real_integrations_verified": false,
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "checks": [
+    {
+      "expectedPaused": true,
+      "status": 200,
+      "actualPaused": true,
+      "hintCount": 1,
+      "deliveryCellVisible": true,
+      "layout": {
+        "viewport": 390,
+        "scrollWidth": 390
+      },
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failedBusinessRequests": [],
+      "screenshot": "report-external-paused-mobile.png"
+    },
+    {
+      "expectedPaused": false,
+      "status": 200,
+      "actualPaused": false,
+      "hintCount": 0,
+      "deliveryCellVisible": true,
+      "layout": {
+        "viewport": 390,
+        "scrollWidth": 390
+      },
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failedBusinessRequests": [],
+      "screenshot": "report-external-gap-cleared-mobile.png"
+    }
+  ],
+  "passed": true,
+  "buildId": "yBP-Gmcjgn_2yq5fcN15f",
+  "fixture": {
+    "marker": "engineering-external-pause-ui-b4e43872-db1e-4f01-8869-00e495d21aff",
+    "reportId": "90a4f94f-8d5a-4a62-8d6f-af2175344187",
+    "inAppId": "649c55d1-d31e-413a-9c85-d743fc73d097",
+    "emailId": "d291a1af-0938-41e4-8d6a-f895d4fbefb9",
+    "outboxIds": [
+      "6079a6cf-641b-4cc9-a41c-62ea8d162ecc",
+      "38a33f23-e9c1-4945-b634-72128f2a57a0"
+    ],
+    "futureDue": true,
+    "actualExternalCall": false
+  },
+  "cleanup": {
+    "fixtureOutboxRemoved": true,
+    "fixtureNotificationsRemoved": 2,
+    "immutableEmptyEngineeringReportRetained": true,
+    "previousBusinessRecordsTouched": false
+  },
+  "stop_switch_changed": false,
+  "external_delivery_resumed": false
+}

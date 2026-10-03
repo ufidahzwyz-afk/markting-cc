@@ -71,7 +71,7 @@ export async function dispatchReports(db: Database): Promise<ReportDispatchResul
     const mode = modeOf(notification); const ctx = mode ? await context(db, String(notification.org_id), mode) : null;
     const adapter = mode && (notification.channel === "in_app" ? inboxAdapter(db, String(notification.org_id), mode) : deliveryAdapters.get(registryKey(String(notification.org_id), mode))?.notification);
     if (!ctx || !adapter) { await blocked(db, String(notification.event_id), !ctx ? "REPORT_CONTEXT_UNAVAILABLE" : "NOTIFICATION_ADAPTER_NOT_CONFIGURED", !ctx ? "active_operator" : "trusted_notification_adapter"); result.blocked++; continue; }
-    try { const delivered = await processNotification(ctx, String(notification.id), adapter); if (delivered.state === "succeeded") { if (!("duplicate" in delivered && delivered.duplicate)) { if (notification.channel === "in_app") result.inApp++; else result.external++; } } else result.failed++; }
+    try { const delivered = await processNotification(ctx, String(notification.id), adapter); if (delivered.state === "succeeded") { if (!("duplicate" in delivered && delivered.duplicate)) { if (notification.channel === "in_app") result.inApp++; else result.external++; } } else if (delivered.state === "pending") result.blocked++; else result.failed++; }
     catch (error) {
       if (error instanceof DomainError && ["RETRY_NOT_DUE", "STALE_NOTIFICATION_LEASE"].includes(error.code)) continue;
       await blocked(db, String(notification.event_id), error instanceof DomainError ? error.code : "NOTIFICATION_DISPATCH_FAILED", "notification_recovery"); result.blocked++;
@@ -82,7 +82,7 @@ export async function dispatchReports(db: Database): Promise<ReportDispatchResul
     const mode = modeOf(report); const ctx = mode ? await context(db, String(report.org_id), mode) : null;
     const adapter = mode ? deliveryAdapters.get(registryKey(String(report.org_id), mode))?.drive : undefined;
     if (!ctx || !adapter) { await blocked(db, String(report.event_id), !ctx ? "REPORT_CONTEXT_UNAVAILABLE" : "DRIVE_ADAPTER_NOT_CONFIGURED", !ctx ? "active_operator" : "trusted_drive_adapter"); result.blocked++; continue; }
-    try { const archived = await archiveReportToDrive(ctx, String(report.id), adapter); if (archived.state === "succeeded") { if (!("duplicate" in archived && archived.duplicate)) result.archived++; } else result.failed++; }
+    try { const archived = await archiveReportToDrive(ctx, String(report.id), adapter); if (archived.state === "succeeded") { if (!("duplicate" in archived && archived.duplicate)) result.archived++; } else if (archived.state === "pending") result.blocked++; else result.failed++; }
     catch (error) {
       if (error instanceof DomainError && ["ARCHIVE_BUSY", "STALE_ARCHIVE_LEASE"].includes(error.code)) continue;
       await blocked(db, String(report.event_id), error instanceof DomainError ? error.code : "ARCHIVE_DISPATCH_FAILED", "archive_recovery"); result.blocked++;

@@ -44,4 +44,6 @@ Mac Studio 一般只使用基础 compose。Cloud Run 构建使用 `infra/Dockerf
 
 已做 HCL 解析；未运行 Terraform init、provider validate、plan 或 apply。当前没有 GCP 身份或秘密，也未申请云资源、改 DNS 或采购服务。
 
-本轮Linux已构建两个本地镜像并顺序冒烟各服务、执行PG逻辑备份恢复。因托管环境VFS存储与32GB磁盘限制，四应用同时容器启动未完整完成；源码并行修改期间的镜像需要收尾后重建。具体证据和限制见 `docs/acceptance/T8.md`。CloudScheduler通过OAuth调用实际CloudRunJob `job.ts`，不依赖未实现的dispatch HTTP接口；CloudTasks实际投递集成仍待接入。
+本轮 Linux 已完成冻结源码的两镜像重建、纯镜像顺序冒烟、实际 worker/浏览器队列消费、共享媒体卷和 PG 备份恢复；两镜像各176个复制源文件 SHA 一致，Docker 原生 Chromium 的完整浏览器测试28/28通过。因托管环境 VFS 与32GB磁盘限制，四应用同时容器启动未验证；用户 Mac Studio ARM64 仍需现场复验。具体证据和限制见 `docs/acceptance/T8.md`。CloudScheduler通过OAuth调用实际CloudRunJob `job.ts`，不依赖未实现的dispatch HTTP接口；CloudTasks实际投递集成仍待接入。
+
+停止开关修复后的最终本地镜像已在Linux重新构建；两镜像176个runtime文件SHA全部匹配，dev镜像内独立停止控制/迟到回执围栏QA 15/15通过。该窄复核与此前bd4cb431完整四服务/浏览器/恢复验收分别记录，详见 `docs/acceptance/docker-final.json` 的 `postStopControlRefresh`。最新标签仍为boran-local-dev:0.1.0与boran-local-browser:0.1.0，具体本地image ID见T8；未推送registry，MacStudio ARM64待现场验收。

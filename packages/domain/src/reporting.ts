@@ -89,8 +89,27 @@ export async function enqueueReportNotifications(ctx: ServiceContext, reportId: 
     return { ids, mode: ctx.mode };
   });
 }
+/** Checked immediately before each new external report write; read-only recovery is deliberately outside this gate. */
+export async function assertReportExternalWriteAllowed(ctx: ServiceContext, tx: SqlExecutor = ctx.db) {
+  if (ctx.mode === "mock") return;
+  const org = (await tx.query("SELECT write_enabled FROM organizations WHERE id=$1", [ctx.orgId])).rows[0];
+  if (process.env.WRITE_ENABLED !== "true" || org?.write_enabled !== true) throw new DomainError("WRITE_DISABLED", 409, "外送与归档已暂停", { deploymentEnabled: process.env.WRITE_ENABLED === "true", organizationEnabled: org?.write_enabled === true });
+}
+function nextLeaseGeneration(payload: Row) { const previous = Number(payload.leaseGeneration ?? 0); if (!Number.isSafeInteger(previous) || previous < 0 || previous >= Number.MAX_SAFE_INTEGER) throw new DomainError("INVALID_LEASE_GENERATION", 409, "持久租约代次无效"); return previous + 1; }
+function assertReportLease(event: Row | undefined, generation: number, code: string, attempts: number) { if (!event || Number((event.payload as Row)?.leaseGeneration) !== generation || Number(event.attempts) !== attempts) throw new DomainError(code, 409, "较早的执行器不能覆盖新租约"); }
+function deliveryPayload(payload: Row, extra: Row): Row {
+  // A verified result replaces a prior stop notice; the independent generation is never refunded.
+  const { dispatch_state: _state, processing_error: _error, missing: _missing, ...rest } = payload;
+  return { ...rest, ...extra };
+}
+async function reportWriteStopped(ctx: ServiceContext, tx: SqlExecutor, event: Row, reportId: string, receiptState: string) {
+  const payload = event.payload as Row;
+  await tx.query("UPDATE outbox_events SET attempts=$3,next_attempt_at=$4,payload=$5 WHERE org_id=$1 AND id=$2", [ctx.orgId, event.id, Number(event.attempts) - 1, new Date(Date.parse(nowIso(ctx)) + 60000).toISOString(), JSON.stringify({ ...payload, receiptState, dispatch_state: "needs_human", processing_error: "WRITE_DISABLED", missing: ["WRITE_ENABLED", "organizations.write_enabled"], writeDisabledNotice: true })]);
+  if (!payload.writeDisabledNotice) await emitOutbox(ctx, tx, "alert.write_disabled", reportId, { reportId, mode: ctx.mode, code: "WRITE_DISABLED", impact: "外送与归档已暂停", recovery: "enable_global_and_organization_write_then_retry" });
+  await audit(ctx, tx, "report.write_disabled", "report_snapshot", reportId, { mode: ctx.mode, eventId: event.id, receiptState });
+}
 export interface NotificationAdapter { mode: "mock" | "live"; send(input: { idempotencyKey: string; channel: string; recipientRef: string; reportId: string }): Promise<{ delivered: boolean; providerMessageId: string | null }>; reconcile(input: { idempotencyKey: string; providerMessageId: string | null }): Promise<{ state: "delivered" | "absent" | "unknown"; providerMessageId: string | null }> }
-type ClaimedNotification = { notification: Row; event: Row; reconcile: boolean };
+type ClaimedNotification = { notification: Row; event: Row; reconcile: boolean; generation: number };
 export async function processNotification(ctx: ServiceContext, id: string, adapter: NotificationAdapter, options: { maxAttempts?: number; leaseMs?: number } = {}) {
   await requireActiveRole(ctx, ctx.db, "owner", "marketer"); if (adapter.mode !== ctx.mode) throw new DomainError("MODE_MISMATCH", 422, "通知适配器模式不同");
   const maxAttempts = options.maxAttempts ?? 5; const leaseMs = options.leaseMs ?? 60000;
@@ -102,58 +121,108 @@ export async function processNotification(ctx: ServiceContext, id: string, adapt
     const eventPayload = event.payload as Row; if (Date.parse(String(event.next_attempt_at)) > Date.parse(nowIso(ctx))) throw new DomainError("RETRY_NOT_DUE", 409, "重试或租约尚未到期");
     if (Number(event.attempts) >= maxAttempts) throw new DomainError("DELIVERY_EXHAUSTED", 409, "通知达到重试上限，记录仍保留");
     const reconcile = eventPayload.receiptState === "unknown" || notification.status === "sending";
+    const generation = nextLeaseGeneration(eventPayload);
     await tx.query("UPDATE notifications SET status='sending',attempts=attempts+1 WHERE org_id=$1 AND id=$2", [ctx.orgId, id]);
-    await tx.query("UPDATE outbox_events SET attempts=attempts+1,next_attempt_at=$3,payload=$4 WHERE org_id=$1 AND id=$2", [ctx.orgId, event.id, new Date(Date.parse(nowIso(ctx)) + leaseMs).toISOString(), JSON.stringify({ ...eventPayload, receiptState: "unknown" })]);
-    return { notification, event, reconcile };
+    await tx.query("UPDATE outbox_events SET attempts=attempts+1,next_attempt_at=$3,payload=$4 WHERE org_id=$1 AND id=$2", [ctx.orgId, event.id, new Date(Date.parse(nowIso(ctx)) + leaseMs).toISOString(), JSON.stringify({ ...eventPayload, receiptState: "unknown", leaseGeneration: generation })]);
+    return { notification, event, reconcile, generation };
   });
   if (!claimed) return { id, state: "succeeded", duplicate: true, mode: ctx.mode };
-  const { notification, event } = claimed; const key = `notification:${id}`;
-  let delivered = false; let providerMessageId = typeof notification.provider_message_id === "string" ? notification.provider_message_id : null; let receiptState = "unknown";
+  const { notification, event, generation } = claimed; const key = `notification:${id}`;
+  let delivered = false; let stopped = false; let submissionStarted = false; let providerMessageId = typeof notification.provider_message_id === "string" ? notification.provider_message_id : null;
+  let receiptState = claimed.reconcile ? "unknown" : String((event.payload as Row).receiptState ?? "not_submitted");
   try {
-    if (claimed.reconcile) { const reconciled = await adapter.reconcile({ idempotencyKey: key, providerMessageId }); providerMessageId = reconciled.providerMessageId; delivered = reconciled.state === "delivered"; receiptState = reconciled.state; }
-    if (!claimed.reconcile || receiptState === "absent") { const sent = await adapter.send({ idempotencyKey: key, channel: String(notification.channel), recipientRef: String(notification.recipient_ref), reportId: String(notification.report_id) }); delivered = sent.delivered && !!sent.providerMessageId; providerMessageId = sent.providerMessageId; receiptState = delivered ? "delivered" : "unknown"; }
-  } catch { receiptState = "unknown"; }
+    if (claimed.reconcile) { const reconciled = await adapter.reconcile({ idempotencyKey: key, providerMessageId }); providerMessageId = reconciled.providerMessageId; delivered = reconciled.state === "delivered" && !!providerMessageId; receiptState = delivered ? "delivered" : reconciled.state === "absent" ? "absent" : "unknown"; }
+    if (!claimed.reconcile || receiptState === "absent") {
+      await ctx.db.transaction(async (tx) => {
+        await tx.query("SELECT id FROM notifications WHERE org_id=$1 AND id=$2 FOR UPDATE", [ctx.orgId, id]);
+        const lease = (await tx.query("SELECT payload,attempts FROM outbox_events WHERE org_id=$1 AND id=$2 FOR UPDATE", [ctx.orgId, event.id])).rows[0]; assertReportLease(lease, generation, "STALE_NOTIFICATION_LEASE", Number(event.attempts) + 1);
+        await requireActiveRole(ctx, tx, "owner", "marketer");
+        if (notification.channel !== "in_app") await assertReportExternalWriteAllowed(ctx, tx);
+      });
+      submissionStarted = true;
+      const sent = await adapter.send({ idempotencyKey: key, channel: String(notification.channel), recipientRef: String(notification.recipient_ref), reportId: String(notification.report_id) }); delivered = sent.delivered && !!sent.providerMessageId; providerMessageId = sent.providerMessageId; receiptState = delivered ? "delivered" : "unknown";
+    }
+  } catch (error) {
+    if (error instanceof DomainError && error.code === "STALE_NOTIFICATION_LEASE") throw error;
+    if (error instanceof DomainError && error.code === "WRITE_DISABLED" && !submissionStarted) stopped = true;
+    else receiptState = "unknown";
+  }
   const attempts = Number(event.attempts) + 1;
   await ctx.db.transaction(async (tx) => {
     await tx.query("SELECT id FROM notifications WHERE org_id=$1 AND id=$2 FOR UPDATE", [ctx.orgId, id]);
-    const lease = (await tx.query("SELECT attempts FROM outbox_events WHERE org_id=$1 AND id=$2 FOR UPDATE", [ctx.orgId, event.id])).rows[0]; if (!lease || Number(lease.attempts) !== attempts) throw new DomainError("STALE_NOTIFICATION_LEASE", 409, "较早的通知执行器不能覆盖新尝试");
+    const lease = (await tx.query("SELECT * FROM outbox_events WHERE org_id=$1 AND id=$2 FOR UPDATE", [ctx.orgId, event.id])).rows[0]; assertReportLease(lease, generation, "STALE_NOTIFICATION_LEASE", Number(event.attempts) + 1);
+    if (stopped) {
+      await tx.query("UPDATE notifications SET status='pending',attempts=$3,provider_message_id=$4 WHERE org_id=$1 AND id=$2", [ctx.orgId, id, Number(notification.attempts), providerMessageId]);
+      await reportWriteStopped(ctx, tx, lease!, String(notification.report_id), receiptState); return;
+    }
     await tx.query("UPDATE notifications SET status=$3,sent_at=$4,provider_message_id=$5 WHERE org_id=$1 AND id=$2", [ctx.orgId, id, delivered ? "succeeded" : "failed", delivered ? nowIso(ctx) : null, providerMessageId]);
-    await tx.query("UPDATE outbox_events SET dispatched_at=$3,next_attempt_at=$4,payload=$5 WHERE org_id=$1 AND id=$2", [ctx.orgId, event.id, delivered ? nowIso(ctx) : null, new Date(Date.parse(nowIso(ctx)) + Math.min(3600000, 1000 * 2 ** attempts)).toISOString(), JSON.stringify({ notificationId: id, mode: ctx.mode, receiptState, manualRecoveryRequired: attempts >= maxAttempts })]);
+    await tx.query("UPDATE outbox_events SET dispatched_at=$3,next_attempt_at=$4,payload=$5 WHERE org_id=$1 AND id=$2", [ctx.orgId, event.id, delivered ? nowIso(ctx) : null, new Date(Date.parse(nowIso(ctx)) + Math.min(3600000, 1000 * 2 ** attempts)).toISOString(), JSON.stringify(deliveryPayload(lease!.payload as Row, { notificationId: id, mode: ctx.mode, receiptState, manualRecoveryRequired: attempts >= maxAttempts }))]);
     await audit(ctx, tx, "notification.result", "notification", id, { delivered, mode: ctx.mode, attempts, receiptState });
     if (!delivered) await emitOutbox(ctx, tx, "alert.delivery_failed", id, { notificationId: id, mode: ctx.mode, impact: "通知未送达", recovery: attempts >= maxAttempts ? "manual_required" : "reconcile_then_retry" });
   });
-  return { id, state: delivered ? "succeeded" : "failed", mode: ctx.mode, receiptState, realAcceptance: delivered && ctx.mode === "live" };
+  return { id, state: stopped ? "pending" : delivered ? "succeeded" : "failed", ...(stopped ? { code: "WRITE_DISABLED" } : {}), mode: ctx.mode, receiptState, realAcceptance: delivered && ctx.mode === "live" };
 }
 export interface DriveArchiveAdapter { mode: "mock" | "live"; findByIdempotencyKey(key: string): Promise<{ fileId: string } | null>; reconcile?(key: string): Promise<{ state: "found" | "absent" | "unknown"; fileId?: string }>; write(input: { idempotencyKey: string; name: string; content: string }): Promise<{ fileId: string }>; read(fileId: string): Promise<{ content: string; revision: string }> }
 export async function archiveReportToDrive(ctx: ServiceContext, reportId: string, adapter: DriveArchiveAdapter) {
   await requireActiveRole(ctx, ctx.db, "owner", "marketer"); if (adapter.mode !== ctx.mode) throw new DomainError("MODE_MISMATCH", 422, "归档适配器模式不同");
   const claim = await ctx.db.transaction(async (tx) => {
     const report = (await tx.query("SELECT * FROM report_snapshots WHERE org_id=$1 AND id=$2 AND body_json->>'mode'=$3 FOR UPDATE", [ctx.orgId, reportId, ctx.mode])).rows[0]; if (!report) throw new DomainError("NOT_FOUND", 404, "报告不存在");
-    if (report.archive_status === "succeeded") return { report, event: null, duplicate: true };
+    if (report.archive_status === "succeeded") return { report, event: null, duplicate: true, generation: 0 };
     let event = (await tx.query("SELECT * FROM outbox_events WHERE org_id=$1 AND aggregate_id=$2 AND event_type='report.archive' AND dispatched_at IS NULL ORDER BY created_at LIMIT 1 FOR UPDATE", [ctx.orgId, reportId])).rows[0];
     if (!event) { await emitOutbox(ctx, tx, "report.archive", reportId, { mode: ctx.mode }); event = (await tx.query("SELECT * FROM outbox_events WHERE org_id=$1 AND aggregate_id=$2 AND event_type='report.archive' AND dispatched_at IS NULL ORDER BY created_at LIMIT 1", [ctx.orgId, reportId])).rows[0]!; }
     if (Date.parse(String(event.next_attempt_at)) > Date.parse(nowIso(ctx))) throw new DomainError("ARCHIVE_BUSY", 409, "归档租约或重试尚未到期");
     if (Number(event.attempts) >= 5) throw new DomainError("ARCHIVE_EXHAUSTED", 409, "归档达到重试上限，需人工恢复");
-    await tx.query("UPDATE outbox_events SET attempts=attempts+1,next_attempt_at=$3 WHERE org_id=$1 AND id=$2", [ctx.orgId, event.id, new Date(Date.parse(nowIso(ctx)) + 60000).toISOString()]);
-    return { report, event, duplicate: false };
+    const generation = nextLeaseGeneration(event.payload as Row);
+    await tx.query("UPDATE outbox_events SET attempts=attempts+1,next_attempt_at=$3,payload=$4 WHERE org_id=$1 AND id=$2", [ctx.orgId, event.id, new Date(Date.parse(nowIso(ctx)) + 60000).toISOString(), JSON.stringify({ ...(event.payload as Row), leaseGeneration: generation })]);
+    return { report, event, duplicate: false, generation };
   });
   if (claim.duplicate) return { reportId, state: "succeeded", duplicate: true, mode: ctx.mode };
-  const { report, event } = claim;
+  const { report, event, generation } = claim;
   const content = JSON.stringify({ id: report.id, kind: report.kind, period_start: String(report.period_start), period_end: String(report.period_end), revision: Number(report.revision), metric_version: report.metric_version, source_batch_ids: report.source_batch_ids, query_hash: report.query_hash, data_cutoff: String(report.data_cutoff), quality: report.quality, metrics: report.metrics_json, body: report.body_json, mode: ctx.mode });
   const hash = createHash("sha256").update(content).digest("hex"); const key = `report:${reportId}:r${report.revision}`;
+  let receiptState = (event!.payload as Row).receiptState === "absent" ? "absent" : "not_submitted"; let submissionStarted = false;
   try {
     let found = await adapter.findByIdempotencyKey(key);
-    if (!found && Number(event!.attempts) > 0) {
+    if (!found && Number(event!.attempts) > 0 && (event!.payload as Row).receiptState !== "absent") {
       const reconciled = await adapter.reconcile?.(key);
       if (reconciled?.state === "found" && reconciled.fileId) found = { fileId: reconciled.fileId };
-      else if (reconciled?.state !== "absent") throw new DomainError("ARCHIVE_RESULT_UNKNOWN", 409, "历史归档结果未确定，不可盲目重写");
+      else if (reconciled?.state === "absent") receiptState = "absent";
+      else { receiptState = "unknown"; throw new DomainError("ARCHIVE_RESULT_UNKNOWN", 409, "历史归档结果未确定，不可盲目重写"); }
     }
-    const file = found ?? await adapter.write({ idempotencyKey: key, name: `泊冉_${ctx.mode}_${report.kind}_${report.period_end}_r${report.revision}.json`, content });
+    if (!found) {
+      await ctx.db.transaction(async (tx) => {
+        await tx.query("SELECT id FROM report_snapshots WHERE org_id=$1 AND id=$2 FOR UPDATE", [ctx.orgId, reportId]);
+        const lease = (await tx.query("SELECT payload,attempts FROM outbox_events WHERE org_id=$1 AND id=$2 FOR UPDATE", [ctx.orgId, event!.id])).rows[0]; assertReportLease(lease, generation, "STALE_ARCHIVE_LEASE", Number(event!.attempts) + 1);
+        await requireActiveRole(ctx, tx, "owner", "marketer"); await assertReportExternalWriteAllowed(ctx, tx);
+      });
+      receiptState = "unknown"; submissionStarted = true;
+      found = await adapter.write({ idempotencyKey: key, name: `泊冉_${ctx.mode}_${report.kind}_${report.period_end}_r${report.revision}.json`, content });
+    }
+    const file = found;
     const readback = await adapter.read(file.fileId);
     if (!readback.revision || createHash("sha256").update(readback.content).digest("hex") !== hash) throw new DomainError("ARCHIVE_READBACK_MISMATCH", 409, "归档回读内容或版本不一致");
-    await ctx.db.transaction(async (tx) => { await tx.query("SELECT id FROM report_snapshots WHERE org_id=$1 AND id=$2 FOR UPDATE", [ctx.orgId, reportId]); const lease = (await tx.query("SELECT attempts FROM outbox_events WHERE org_id=$1 AND id=$2 FOR UPDATE", [ctx.orgId, event!.id])).rows[0]; if (Number(lease?.attempts) !== Number(event!.attempts) + 1) throw new DomainError("STALE_ARCHIVE_LEASE", 409, "较早的归档执行器不能覆盖新尝试"); await tx.query("UPDATE report_snapshots SET archive_status='succeeded',drive_file_id=$3,archive_hash=$4,archived_at=$5 WHERE org_id=$1 AND id=$2", [ctx.orgId, reportId, file.fileId, hash, nowIso(ctx)]); await tx.query("UPDATE outbox_events SET dispatched_at=$3,payload=$4 WHERE org_id=$1 AND id=$2", [ctx.orgId, event!.id, nowIso(ctx), JSON.stringify({ mode: ctx.mode, fileId: file.fileId, revision: readback.revision, hash })]); await audit(ctx, tx, "report.archived", "report_snapshot", reportId, { mode: ctx.mode, fileId: file.fileId, revision: readback.revision }); });
+    await ctx.db.transaction(async (tx) => {
+      await tx.query("SELECT id FROM report_snapshots WHERE org_id=$1 AND id=$2 FOR UPDATE", [ctx.orgId, reportId]);
+      const lease = (await tx.query("SELECT * FROM outbox_events WHERE org_id=$1 AND id=$2 FOR UPDATE", [ctx.orgId, event!.id])).rows[0]; assertReportLease(lease, generation, "STALE_ARCHIVE_LEASE", Number(event!.attempts) + 1);
+      await tx.query("UPDATE report_snapshots SET archive_status='succeeded',drive_file_id=$3,archive_hash=$4,archived_at=$5 WHERE org_id=$1 AND id=$2", [ctx.orgId, reportId, file.fileId, hash, nowIso(ctx)]);
+      await tx.query("UPDATE outbox_events SET dispatched_at=$3,payload=$4 WHERE org_id=$1 AND id=$2", [ctx.orgId, event!.id, nowIso(ctx), JSON.stringify(deliveryPayload(lease!.payload as Row, { mode: ctx.mode, fileId: file.fileId, revision: readback.revision, hash, receiptState: "found" }))]);
+      await audit(ctx, tx, "report.archived", "report_snapshot", reportId, { mode: ctx.mode, fileId: file.fileId, revision: readback.revision });
+    });
     return { reportId, state: "succeeded", mode: ctx.mode, realAcceptance: ctx.mode === "live", fileId: file.fileId };
-  } catch (error) { if (error instanceof DomainError && error.code === "STALE_ARCHIVE_LEASE") throw error; await ctx.db.transaction(async (tx) => { await tx.query("SELECT id FROM report_snapshots WHERE org_id=$1 AND id=$2 FOR UPDATE", [ctx.orgId, reportId]); const lease = (await tx.query("SELECT attempts FROM outbox_events WHERE org_id=$1 AND id=$2 FOR UPDATE", [ctx.orgId, event!.id])).rows[0]; if (Number(lease?.attempts) !== Number(event!.attempts) + 1) throw new DomainError("STALE_ARCHIVE_LEASE", 409, "归档尝试已变化"); await tx.query("UPDATE report_snapshots SET archive_status='failed' WHERE org_id=$1 AND id=$2 AND archive_status<>'succeeded'", [ctx.orgId, reportId]); await tx.query("UPDATE outbox_events SET next_attempt_at=$3,payload=$4 WHERE org_id=$1 AND id=$2", [ctx.orgId, event!.id, new Date(Date.parse(nowIso(ctx)) + 5000).toISOString(), JSON.stringify({ mode: ctx.mode, code: "ARCHIVE_NOT_VERIFIED", requiresReconciliation: true })]); await audit(ctx, tx, "report.archive_failed", "report_snapshot", reportId, { code: "ARCHIVE_NOT_VERIFIED", mode: ctx.mode }); await emitOutbox(ctx, tx, "alert.archive_failed", reportId, { reportId, mode: ctx.mode, impact: "报告未归档", recovery: "readback_reconcile_required" }); }); return { reportId, state: "failed", mode: ctx.mode, realAcceptance: false }; }
+  } catch (error) {
+    if (error instanceof DomainError && error.code === "STALE_ARCHIVE_LEASE") throw error;
+    const stopped = error instanceof DomainError && error.code === "WRITE_DISABLED" && !submissionStarted;
+    await ctx.db.transaction(async (tx) => {
+      await tx.query("SELECT id FROM report_snapshots WHERE org_id=$1 AND id=$2 FOR UPDATE", [ctx.orgId, reportId]);
+      const lease = (await tx.query("SELECT * FROM outbox_events WHERE org_id=$1 AND id=$2 FOR UPDATE", [ctx.orgId, event!.id])).rows[0]; assertReportLease(lease, generation, "STALE_ARCHIVE_LEASE", Number(event!.attempts) + 1);
+      if (stopped) { await tx.query("UPDATE report_snapshots SET archive_status='pending' WHERE org_id=$1 AND id=$2 AND archive_status<>'succeeded'", [ctx.orgId, reportId]); await reportWriteStopped(ctx, tx, lease!, reportId, receiptState); return; }
+      await tx.query("UPDATE report_snapshots SET archive_status='failed' WHERE org_id=$1 AND id=$2 AND archive_status<>'succeeded'", [ctx.orgId, reportId]);
+      await tx.query("UPDATE outbox_events SET next_attempt_at=$3,payload=$4 WHERE org_id=$1 AND id=$2", [ctx.orgId, event!.id, new Date(Date.parse(nowIso(ctx)) + 5000).toISOString(), JSON.stringify(deliveryPayload(lease!.payload as Row, { mode: ctx.mode, code: "ARCHIVE_NOT_VERIFIED", receiptState: "unknown", requiresReconciliation: true }))]);
+      await audit(ctx, tx, "report.archive_failed", "report_snapshot", reportId, { code: "ARCHIVE_NOT_VERIFIED", mode: ctx.mode });
+      await emitOutbox(ctx, tx, "alert.archive_failed", reportId, { reportId, mode: ctx.mode, impact: "报告未归档", recovery: "readback_reconcile_required" });
+    });
+    return { reportId, state: stopped ? "pending" : "failed", ...(stopped ? { code: "WRITE_DISABLED" } : {}), mode: ctx.mode, realAcceptance: false };
+  }
 }
 export function advertisingRetention(input: { endedAt: string | null; retainUntil: string | null; legalHold: boolean }, at: Date = new Date()) {
   if (!input.endedAt) return { deletable: false, retainUntil: null, reason: "传播未结束不得清理" };

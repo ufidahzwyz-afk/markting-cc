@@ -50,3 +50,61 @@ test("AC46: advertisements never expire before ended+3 years or during legal hol
 test("seven complete business days cannot be claimed from two-day mocks or CSV imports", async () => {
   const result = await getSevenDayCompleteness(ctx, { start: "2026-09-27", end: "2026-10-03", connectionIds: [connectionId] }); assert.equal(result.expectedDates.length, 7); assert.equal(result.completeBusinessDays, 1); assert.equal(result.passed, false); assert.equal(result.realAcceptance, false); assert.equal(result.sourceValidated, false);
 });
+
+
+test("stop refunds attempts without reusing a lease generation or accepting an older external receipt", async () => {
+  const previous = process.env.WRITE_ENABLED;
+  const live = { ...ctx, mode: "live" as const };
+  const deferred = () => { let resolve!: () => void; const promise = new Promise<void>((done) => { resolve = done; }); return { promise, resolve }; };
+  try {
+    process.env.WRITE_ENABLED = "true"; await db.query("UPDATE organizations SET write_enabled=true WHERE id=$1", [ctx.orgId]);
+    const report = await createReportSnapshot(live, { kind: "daily", start: "2026-10-02", end: "2026-10-02" });
+    const id = (await enqueueReportNotifications(live, report.id, [{ channel: "email", recipientRef: `user:${ctx.actorId}` }])).ids[0]!;
+    const entered = deferred(), release = deferred();
+    const oldNotification = processNotification(live, id, { mode: "live", async send() { entered.resolve(); await release.promise; return { delivered: true, providerMessageId: "synthetic-old-receipt" }; }, async reconcile() { return { state: "unknown", providerMessageId: null }; } });
+    // Attach the rejection assertion immediately so a late worker error is always handled.
+    const oldNotificationResult = assert.rejects(oldNotification, { code: "STALE_NOTIFICATION_LEASE" });
+    await entered.promise;
+    process.env.WRITE_ENABLED = "false"; await db.query("UPDATE outbox_events SET next_attempt_at='2000-01-01' WHERE aggregate_id=$1 AND event_type='notification.deliver'", [id]);
+    const stopped = await processNotification(live, id, { mode: "live", async send() { throw new Error("Stop must block replacement submission"); }, async reconcile() { return { state: "absent", providerMessageId: null }; } });
+    assert.equal(stopped.state, "pending");
+    const stoppedEvent = (await db.query("SELECT * FROM outbox_events WHERE aggregate_id=$1 AND event_type='notification.deliver'", [id])).rows[0]!;
+    assert.equal(Number(stoppedEvent.attempts), 1); assert.equal((stoppedEvent.payload as Record<string, unknown>).leaseGeneration, 2);
+    release.resolve(); await oldNotificationResult;
+    const notification = (await db.query("SELECT * FROM notifications WHERE id=$1", [id])).rows[0]!;
+    assert.equal(notification.status, "pending"); assert.equal(notification.provider_message_id, null); assert.equal(Number(notification.attempts), 1);
+
+    process.env.WRITE_ENABLED = "true";
+    const archiveEntered = deferred(), archiveRelease = deferred(); let content = "";
+    const oldArchive = archiveReportToDrive(live, report.id, { mode: "live", async findByIdempotencyKey() { return null; }, async write(input) { content = input.content; archiveEntered.resolve(); await archiveRelease.promise; return { fileId: "synthetic-old-file" }; }, async read() { return { content, revision: "synthetic-r1" }; } });
+    const oldArchiveResult = assert.rejects(oldArchive, { code: "STALE_ARCHIVE_LEASE" });
+    await archiveEntered.promise;
+    process.env.WRITE_ENABLED = "false"; await db.query("UPDATE outbox_events SET next_attempt_at='2000-01-01' WHERE aggregate_id=$1 AND event_type='report.archive'", [report.id]);
+    const archiveStopped = await archiveReportToDrive(live, report.id, { mode: "live", async findByIdempotencyKey() { return null; }, async reconcile() { return { state: "absent" }; }, async write() { throw new Error("Stop must block replacement archive write"); }, async read() { throw new Error("No new archive file exists"); } });
+    assert.equal(archiveStopped.state, "pending");
+    const archiveEvent = (await db.query("SELECT * FROM outbox_events WHERE aggregate_id=$1 AND event_type='report.archive'", [report.id])).rows[0]!;
+    assert.equal(Number(archiveEvent.attempts), 1); assert.equal((archiveEvent.payload as Record<string, unknown>).leaseGeneration, 2);
+    archiveRelease.resolve(); await oldArchiveResult;
+    const kept = (await db.query("SELECT archive_status,drive_file_id FROM report_snapshots WHERE id=$1", [report.id])).rows[0]!;
+    assert.equal(kept.archive_status, "pending"); assert.equal(kept.drive_file_id, null);
+  } finally { if (previous === undefined) delete process.env.WRITE_ENABLED; else process.env.WRITE_ENABLED = previous; await db.query("UPDATE organizations SET write_enabled=false WHERE id=$1", [ctx.orgId]); }
+});
+
+test("adapter errors after an attempted external write remain unknown rather than refundable stops", async () => {
+  const previous = process.env.WRITE_ENABLED;
+  const live = { ...ctx, mode: "live" as const };
+  try {
+    process.env.WRITE_ENABLED = "true"; await db.query("UPDATE organizations SET write_enabled=true WHERE id=$1", [ctx.orgId]);
+    const report = await createReportSnapshot(live, { kind: "daily", start: "2026-10-03", end: "2026-10-03" });
+    const id = (await enqueueReportNotifications(live, report.id, [{ channel: "email", recipientRef: `user:${ctx.actorId}` }])).ids[0]!;
+    const { DomainError } = await import("../src/core");
+    const failed = await processNotification(live, id, { mode: "live", async send() { throw new DomainError("WRITE_DISABLED", 409, "Synthetic provider response after submit"); }, async reconcile() { return { state: "unknown", providerMessageId: null }; } });
+    assert.equal(failed.state, "failed"); assert.ok("receiptState" in failed); assert.equal(failed.receiptState, "unknown");
+    const notificationEvent = (await db.query("SELECT attempts,payload FROM outbox_events WHERE aggregate_id=$1 AND event_type='notification.deliver'", [id])).rows[0]!;
+    assert.equal(Number(notificationEvent.attempts), 1); assert.equal((notificationEvent.payload as Record<string, unknown>).processing_error, undefined);
+    const archive = await archiveReportToDrive(live, report.id, { mode: "live", async findByIdempotencyKey() { return null; }, async write() { throw new DomainError("WRITE_DISABLED", 409, "Synthetic provider response after submit"); }, async read() { throw new Error("No known file"); } });
+    assert.equal(archive.state, "failed");
+    const archiveEvent = (await db.query("SELECT attempts,payload FROM outbox_events WHERE aggregate_id=$1 AND event_type='report.archive'", [report.id])).rows[0]!;
+    assert.equal(Number(archiveEvent.attempts), 1); assert.equal((archiveEvent.payload as Record<string, unknown>).receiptState, "unknown");
+  } finally { if (previous === undefined) delete process.env.WRITE_ENABLED; else process.env.WRITE_ENABLED = previous; await db.query("UPDATE organizations SET write_enabled=false WHERE id=$1", [ctx.orgId]); }
+});
