@@ -1,30 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { Badge } from "@boran/ui";
 import { Icon } from "./icon";
 
+const sources = [
+  ["公开市场信息", "已批准的市场网站与查询范围", "每日"],
+  ["竞品公开推广", "指定竞品网站、文章与公开活动", "每日"],
+  ["Mac / Google Drive", "指定资料目录的增量变化", "15 分钟"],
+  ["ChatGPT 指定会话", "授权会话的消息与确认结论", "30 分钟"],
+];
+const accounts = ["微信公众号", "视频号 · 企业AI提效官", "百度营销", "今日头条", "知乎", "小红书", "爱番番"];
+
 export function SettingsContent() {
-  const [tab, setTab] = useState<"connections" | "rules">("connections");
+  const [tab, setTab] = useState("sources");
   return <div className="settings-content">
-    <p className="setting-intro">先接通身份与业务平台，再批准执行范围。当前为隔离演练，真实操作始终关闭。</p>
-    <div className="segmented settings-tabs" role="group" aria-label="设置分类">
-      <button type="button" aria-pressed={tab === "connections"} className={tab === "connections" ? "selected" : ""} onClick={() => setTab("connections")}>平台连接</button>
-      <button type="button" aria-pressed={tab === "rules"} className={tab === "rules" ? "selected" : ""} onClick={() => setTab("rules")}>执行规则</button>
-    </div>
-    {tab === "connections" ? <>
-      <div className="settings-group"><h3>系统身份</h3><div className="setting-row"><div className="setting-icon"><Icon name="lock" /></div><div><strong>企业身份 / OIDC</strong><p>当前使用本地模拟身份</p></div><Badge tone="amber">待接入</Badge></div></div>
-      <div className="settings-group"><h3>业务平台</h3>{[
-        ["资料来源", "采集来源与可访问范围待配置"],
-        ["内容发布", "平台账号与发布权限待配置"],
-        ["广告投放", "账户、预算与操作范围待批准"],
-        ["线索接待", "业务账号与回收规则待配置"],
-      ].map(([name, description]) => <div className="setting-row" key={name}><div className="setting-icon"><Icon name="link" /></div><div><strong>{name}</strong><p>{description}</p></div><Badge>未配置</Badge></div>)}</div>
-      <div className="note-block"><Icon name="alert" size={18} /><p>界面预览阶段不收集平台凭据。连接配置将在身份接入与业务实现后开放。</p></div>
-    </> : <>
-      <div className="settings-group"><h3>执行边界</h3><div className="setting-row"><div className="setting-icon"><Icon name="lock" /></div><div><strong>真实写入</strong><p>发布、广告与业务数据写入</p></div><Badge>已关闭</Badge></div><div className="setting-row"><div className="setting-icon"><Icon name="chart" /></div><div><strong>投放预算</strong><p>没有有效的预算批准记录</p></div><Badge tone="amber">未批准</Badge></div></div>
-      <div className="settings-group"><h3>审批原则</h3><ul className="rule-list"><li><Icon name="check" size={18} /><span>批准范围内的规则执行将在业务接入后启用</span></li><li><Icon name="check" size={18} /><span>新事实、预算增加与超范围操作进入人工待办</span></li><li><Icon name="check" size={18} /><span>发布成功需要平台回读核验</span></li></ul></div>
-      <div className="note-block"><Icon name="lock" size={18} /><p>当前没有可批准或执行的真实任务。设置展示仅用于确认界面与操作边界。</p></div>
-    </>}
+    <div className="ui-tabs" role="group" aria-label="设置分类">{[["sources", "资料来源"], ["accounts", "平台账号"], ["rules", "执行规则"]].map(([key, label]) => <button type="button" key={key} aria-pressed={tab === key} className={tab === key ? "active" : ""} onClick={() => setTab(key!)}>{label}</button>)}</div>
+    {tab === "sources" ? <><div className="ui-section-heading"><h3>四类信息来源</h3><span className="ui-status" data-tone="neutral">0 / 4 已接通</span></div><div className="ui-settings-list">{sources.map(([name, detail, frequency]) => <div className="ui-setting-row" key={name}><Icon name="link" size={18} /><div><strong>{name}</strong><p>{detail}</p><small>采集周期：{frequency}</small></div><span className="ui-status" data-tone="amber">未配置</span></div>)}</div><p className="ui-field-hint">周期来自开发基线，实际读取须完成账号与范围验证。</p></>
+    : tab === "accounts" ? <><div className="ui-section-heading"><h3>首批账号接入</h3><span className="ui-muted">待配置</span></div><div className="ui-settings-list">{accounts.map(name => <div className="ui-setting-row" key={name}><Icon name="layers" size={18} /><div><strong>{name}</strong><p>账号、权限与能力待实测</p></div><span className="ui-status" data-tone="neutral">未连接</span></div>)}</div><p className="ui-field-hint">首批 16 个分发渠道在后续任务中逐项接入与验收。</p></>
+    : <><div className="ui-section-heading"><h3>执行开关</h3><span className="ui-status" data-tone="neutral">只读预览</span></div><div className="ui-settings-list">{[["外部内容发布", "平台发布与官网更新"], ["百度广告写入", "创建、更新、启停与出价"], ["真实个人信息处理", "表单与接待留资"]].map(([name, detail]) => <div className="ui-setting-row" key={name}><Icon name="lock" size={18} /><div><strong>{name}</strong><p>{detail}</p></div><button type="button" className="ui-switch" role="switch" aria-checked="false" disabled aria-label={`${name}已关闭`} /></div>)}</div><div className="ui-section-heading"><h3>授权范围</h3></div><dl className="ui-definition-list"><div><dt>付费地域</dt><dd>上海、江苏、浙江、安徽</dd></div><div><dt>投放预算</dt><dd>待负责人批准</dd></div><div><dt>发布频次</dt><dd>待配置</dd></div><div><dt>持续规则</dt><dd>尚未启用</dd></div></dl><p className="ui-field-hint">规则内持续执行；超范围事项进入例外待办。</p></>}
   </div>;
 }

@@ -27,14 +27,29 @@
   ],
   "errors": [],
   "checks": [
-    "mock labels",
     "four routes",
+    "mock labels",
     "desktop/mobile overflow",
-    "keyboard details interaction",
-    "settings dialog + Escape",
-    "theme filter/search/reset",
-    "temporary edits + restore",
-    "disabled persistence",
-    "report source switch + definitions"
-  ]
+    "task status/date/owner/search filters",
+    "task side drawer + Escape",
+    "record disposal without execution completion",
+    "settings disabled switches",
+    "theme business/status/search/sort",
+    "theme batch pause",
+    "theme edit/tasks + local persistence after reload",
+    "theme create + reload",
+    "theme required title from tasks tab",
+    "mobile settings drawer"
+  ],
+  "testedAt": "2026-10-03",
+  "viewport": {
+    "desktop": {
+      "width": 1440,
+      "height": 1000
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844
+    }
+  }
 }

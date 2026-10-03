@@ -1,11 +1,16 @@
-# 泊冉管理台 · M0 界面预览
+# 泊冉管理台 · 界面确认版本
 
-三个主入口：`/overview` 今日工作、`/themes` 推广主题、`/reports` 效果复盘。齿轮打开系统设置抽屉，也可访问 `/settings`。界面针对 390px 手机与 1440px 桌面适配。
+三个主入口：`/overview` 今日工作、`/themes` 推广主题、`/reports` 效果复盘。齿轮打开连接与执行规则抽屉，也可访问 `/settings`。界面使用紧凑导航、任务表格、筛选工具栏与右侧详情，适配 390px 手机和 1440px 桌面。
 
-当前所有主题、任务与测试指标均来自隔离 fixture；没有账号连接、真实发布、投放、预算批准或业务数据写入。主题支持状态筛选、搜索、展开与临时编辑预览；编辑刷新后恢复。新建与保存明确关闭。报告默认展示无真实数据，用户可切换到测试样例并展开计算口径。
+当前所有任务、主题与指标均为隔离模拟数据；没有真实账号连接、发布、投放、预算批准或个人信息写入。
 
-运行：从仓库根目录 `npm install` 后执行 `npm run dev`。管理台本地端口 3000。单独运行需要显式 `APP_ENV=development AUTH_MODE=mock npm run dev --workspace @boran/ops`。
+- 今日工作：10 项任务，可按日期、负责人、状态、关键词筛选；详情显示步骤、来源、阻塞和记录。记录模拟处置不会将仍有阻塞的任务算作执行完成，刷新后处置记录恢复。
+- 推广主题：8 个初始主题，可筛选、排序、批量暂停、新建、编辑及勾选推进任务。保存仅写当前浏览器的 `localStorage` 模拟空间，刷新后保留；不与后端或其他运营账号共享。
+- 效果复盘：日期、渠道、维度、排序和趋势指标可切换，明细支持下钻，CSV 导出当前模拟筛选结果。真实数据页显示待接入，缺失指标保持为空，平台转化不代替有效线索。
+- 设置：四类来源与账号接入状态，以及不可开启的执行开关。
 
-访问默认关闭：只有 `APP_ENV=development` 或 `test` 且 `AUTH_MODE=mock` 可进入演练页面与 `GET /api/v1/overview`。其他模式返回 503，OIDC 真实身份接入尚未实现。`GET /api/health` 仅返回进程存活状态，不包含身份或业务数据。
+运行：仓库根目录执行 `npm ci`、`npm run dev`，打开 http://localhost:3000/overview。单独运行须显式 `APP_ENV=development AUTH_MODE=mock npm run dev --workspace @boran/ops`。
 
-验收：根目录运行 `npm run typecheck`、`npm test`、`npm run build`。UI 人工检查包括主题筛选/搜索/临时编辑、报告来源切换/口径展开、设置抽屉 Escape 关闭与键盘 Tab 导航；生产环境和缺省环境必须拒绝页面/API。
+访问默认关闭：只有 `APP_ENV=development` 或 `test` 且 `AUTH_MODE=mock` 可进入预览页面与 `GET /api/v1/overview`。其他模式返回 503，OIDC 真实身份尚待接入。`GET /api/health` 仅返回进程存活状态。
+
+验收：根目录 `npm run check`。本轮浏览器验收记录见 [界面验收](../../docs/ui-preview/verification.md)，包括四页响应式布局、模拟保存刷新、任务处置语义、CSV 内容回读、键盘关闭抽屉及生产身份阻断。

@@ -4,8 +4,8 @@ export const overviewFixture = {
   realWritesEnabled: false,
   budgetApproved: false,
   connectionsConfigured: false,
-  demoTasks: 4,
-  demoThemes: 3,
+  demoTasks: 10,
+  demoThemes: 8,
   demoExceptions: 3,
   executionStatus: "blocked",
 } as const;
