@@ -32,6 +32,31 @@ async function setup() {
 }
 function expectCode(code: string) { return (error: unknown) => error instanceof DomainError && error.code === code; }
 
+test('historical mock public content cannot be reused for live publication and remains available in its original mode',async()=>{
+  const value=await setup(),live={...value.ctx,mode:'live' as const};
+  try{
+    await assert.rejects(createContentVersion(live,value.item.id,{title:'尝试真实版本',modules:modules(),claim_ids:[]},1),expectCode('CONTENT_MODE_MISMATCH'));
+    await assert.rejects(reviewContentVersion(live,value.content.id,{review_status:'approved'}),expectCode('CONTENT_MODE_MISMATCH'));
+    const action=await value.action();
+    await assert.rejects(publishPage(live,{pageId:value.page.page_id,contentVersionId:value.content.id,actionId:String(action.id),expectedVersion:1},{publicOrigin:'https://example.invalid',allowedPathPrefixes:['/articles']}),expectCode('CONTENT_MODE_MISMATCH'));
+    const release=await publishPage(value.ctx,{pageId:value.page.page_id,contentVersionId:value.content.id,actionId:String(action.id),expectedVersion:1},policy);
+    let fetches=0;
+    await assert.rejects(verifyPageRelease(live,release.release_id,policy,async()=>{fetches++;return new Response('<article data-mode="live"></article>');}),expectCode('CONTENT_MODE_MISMATCH'));
+    assert.equal(fetches,0);
+    assert.equal(await readPublishedPage(value.db,live.orgId,'localhost:3001','/articles/integration','live'),null);
+    assert.equal((await readPublishedPage(value.db,live.orgId,'localhost:3001','/articles/integration','mock'))?.release.id,release.release_id);
+    assert.equal((await value.db.query('SELECT state FROM execution_actions WHERE id=$1',[action.id])).rows[0]!.state,'verification_pending');
+    const old=await getPagePreview(value.ctx,value.page.page_id);assert.equal(old.content.id,value.content.id);assert.equal((await value.db.query('SELECT execution_mode FROM content_items WHERE id=$1',[value.item.id])).rows[0]!.execution_mode,'mock');
+    const item=await createContentItem(live,{title:'独立真实内容',kind:'article',business_line:'shared'});
+    const document=uuid(),source=uuid(),claim=uuid();
+    await value.db.query("INSERT INTO source_documents(id,org_id,provider,title,visibility,owner_user_id) VALUES($1,$2,'upload','Synthetic source','internal',$3)",[document,live.orgId,live.actorId]);
+    await value.db.query("INSERT INTO source_versions(id,org_id,document_id,revision,content_hash,object_key,mime_type,extraction_status,retrieved_at,visibility,coverage_json,execution_mode) VALUES($1,$2,$3,'fixture',$4,'private/synthetic','text/plain','ready',now(),'internal','{\"status\":\"complete\",\"scope\":\"synthetic\"}','mock')",[source,live.orgId,document,'a'.repeat(64)]);
+    await value.db.query("INSERT INTO evidence_claims(id,org_id,claim_text,source_version_id,locator,assertion_type,visibility,verification_status,public_permission,permission_evidence_ref,execution_mode) VALUES($1,$2,'合成核实事实',$3,'{}','fact','public','verified','allowed','{\"fixture\":true}','mock')",[claim,live.orgId,source]);
+    await assert.rejects(createContentVersion(live,item.id,{title:'真实内容引用模拟事实',modules:modules(),claim_ids:[claim]},0),expectCode('CLAIM_MODE_MISMATCH'));
+    assert.equal(Number((await value.db.query('SELECT count(*) AS n FROM content_versions WHERE content_item_id=$1',[item.id])).rows[0]!.n),0);
+  }finally{await value.db.close();}
+});
+
 test("same-host routes reject traversal, encoded paths, reserved routes, unapproved prefixes and cross-domain canonical", () => {
   for (const path of ["//evil.example/a", "/articles/../admin", "/articles/%2e%2e/admin", "/articles/a%2fb", "/articles/a?token=x", "/articles/a#x", "/articles/a\\b", "/api/leads", "/articles2/a"]) assert.throws(() => assertSitePath(path, policy), DomainError);
   assert.equal(assertSitePath("/articles/integration", policy), "/articles/integration");

@@ -1,8 +1,9 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { timingSafeEqual } from "node:crypto";
-import { DEMO_MARKETER_ID, DEMO_ORG_ID, DEMO_OWNER_ID, openDatabase } from "@boran/db";
+import { DEMO_MARKETER_ID, DEMO_ORG_ID, DEMO_OWNER_ID, openDatabase, type Database } from "@boran/db";
 import type { ServiceContext } from "@boran/domain/core";
 import { DomainError } from "@boran/domain/core";
+import { localIdentityReady, resolveLocalSession } from './local-identity';
 
 type HeaderSource = Pick<Headers, "get">;
 const jwks = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
@@ -19,9 +20,16 @@ export function cookieValue(headers: HeaderSource, name: string): string | undef
 export function isLocalIdentity() {
   return process.env.AUTH_MODE === "mock" && ["development", "test"].includes(process.env.APP_ENV ?? "production") && process.env.BORAN_MODE !== "live";
 }
+/** A shared database that has entered real operation must not reopen through anonymous demo identity. */
+export async function assertMockOrganizationIsolated(db:Database,orgId:string) {
+  const found=(await db.query("SELECT EXISTS(SELECT 1 FROM settings WHERE org_id=$1 AND (key LIKE 'local_identity:%' OR key='ai_configuration')) OR EXISTS(SELECT 1 FROM connections WHERE org_id=$1 AND read_mode<>'mock' AND secret_ref IS NOT NULL) OR EXISTS(SELECT 1 FROM source_versions WHERE org_id=$1 AND execution_mode='live') OR EXISTS(SELECT 1 FROM content_items WHERE org_id=$1 AND execution_mode='live') OR EXISTS(SELECT 1 FROM ai_runs WHERE org_id=$1 AND execution_mode='live') AS protected",[orgId])).rows[0];
+  if(found?.protected)throw new DomainError('LIVE_IDENTITY_REQUIRED',403,'此组织已配置真实运行，请使用本地成员登录或组织身份；原模拟历史仍保留');
+}
 export async function authenticate(headers: HeaderSource): Promise<ServiceContext> {
   const local = isLocalIdentity();
-  if (!local && (process.env.AUTH_MODE !== "oidc" || !process.env.OIDC_ISSUER || !process.env.OIDC_AUDIENCE || !process.env.OIDC_JWKS_URL || !process.env.BORAN_ORG_ID || process.env.BORAN_MODE !== "live")) throw new DomainError("IDENTITY_NOT_CONFIGURED", 503, "真实身份与组织配置尚未接入");
+  const passwordLocal = localIdentityReady(process.env);
+  if (!local && !passwordLocal && (process.env.AUTH_MODE !== "oidc" || !process.env.OIDC_ISSUER || !process.env.OIDC_AUDIENCE || !process.env.OIDC_JWKS_URL || !process.env.BORAN_ORG_ID || process.env.BORAN_MODE !== "live")) throw new DomainError("IDENTITY_NOT_CONFIGURED", 503, "真实身份与组织配置尚未接入");
+  if (passwordLocal && !cookieValue(headers, 'boran_local_session')) throw new DomainError('UNAUTHENTICATED', 401, '请登录本地工作台');
   const db = await getDatabase();
   let actorId: string;
   let orgId: string;
@@ -30,6 +38,10 @@ export async function authenticate(headers: HeaderSource): Promise<ServiceContex
     if (selected && selected !== DEMO_OWNER_ID && selected !== DEMO_MARKETER_ID) throw new DomainError("UNAUTHENTICATED", 401, "模拟运营账号无效");
     actorId = selected ?? DEMO_OWNER_ID;
     orgId = DEMO_ORG_ID;
+    await assertMockOrganizationIsolated(db,orgId);
+  } else if (passwordLocal) {
+    orgId = process.env.BORAN_ORG_ID!;
+    actorId = await resolveLocalSession(db, orgId, cookieValue(headers, 'boran_local_session'));
   } else {
     if (process.env.AUTH_MODE !== "oidc" || !process.env.OIDC_ISSUER || !process.env.OIDC_AUDIENCE || !process.env.OIDC_JWKS_URL || !process.env.BORAN_ORG_ID || process.env.BORAN_MODE !== "live") {
       throw new DomainError("IDENTITY_NOT_CONFIGURED", 503, "真实身份与组织配置尚未接入");

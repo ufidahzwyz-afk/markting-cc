@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import path from "node:path";
 
 const nextConfig: NextConfig = {
+  distDir: process.env.BORAN_NEXT_DIST_DIR ?? '.next',
   output: "standalone",
   outputFileTracingRoot: path.resolve(import.meta.dirname, "../.."),
   reactStrictMode: true,

@@ -964,8 +964,9 @@
           "items": {
             "$ref": "#/$defs/target"
           },
-          "minItems": 1,
-          "maxItems": 20
+          "minItems": 0,
+          "maxItems": 20,
+          "description": "私有候选选题可为空；为空时auto_schedule_candidate=false、proposed_scheduled_at=null，并明确登记账号缺口。实际排期仍需有效账号、档案和持续规则。"
         },
         "priority": {
           "type": "integer",

@@ -14,7 +14,7 @@ test('source changes create durable, scope checked and revision-idempotent deriv
  let cursor:unknown=null;
  async function read(revision:string,coverage:'complete'|'partial'='complete'){
   const snapshot={providerFileId:'qa-source',title:'Synthetic source',revision,contentHash:stableHash({revision}),objectKey:`mock://qa/${revision}`,mimeType:'text/plain',retrievedAt:'2026-10-03T00:00:00Z',sourceModifiedAt:null,visibility:'internal' as const,coverage:{status:coverage,scope:'QA synthetic source',start_locator:'p1',end_locator:'p1'}};
-  const result=await ingestSourceRead(ctx,{connectionId,expectedCursorHash:stableHash(cursor),result:{status:'changed',mode:'mock',snapshots:[snapshot],nextCursor:{revision},gaps:[]}});if(result.cursorAdvanced)cursor={revision};return result.sourceVersionIds[0]!;
+  const result=await ingestSourceRead(ctx,{connectionId,expectedCursorHash:stableHash(cursor),result:{status:'changed',mode:'mock',snapshots:[snapshot],nextCursor:{revision},gaps:[]}});if(result.cursorAdvanced)cursor={revision};return result.sourceVersionIds[0]??String((await db.query('SELECT current_version_id FROM source_documents WHERE org_id=$1 AND connection_id=$2',[ctx.orgId,connectionId])).rows[0]!.current_version_id);
  }
  try{
   let firstId='';
@@ -22,7 +22,7 @@ test('source changes create durable, scope checked and revision-idempotent deriv
    firstId=await read('r1');assert.equal(await dispatchMarketing(db),1);const run=(await db.query("SELECT * FROM workflow_runs WHERE org_id=$1 AND kind='insight_topics'",[ctx.orgId])).rows[0]!;assert.equal(run.status,'needs_human');assert.ok((run.error as {missing:string[]}).missing.includes('POLICY_NOT_ACTIVE'));assert.deepEqual((run.input_ref as {source_version_ids:string[]}).source_version_ids,[firstId]);assert.equal((await db.query('SELECT state FROM workflow_steps WHERE run_id=$1',[run.id])).rows[0]!.state,'needs_human');
   });
   await t.test('repeated immutable source revisions schedule once even with a new event id',async()=>{
-   assert.equal(await read('r1'),firstId);assert.equal(await dispatchMarketing(db),1);assert.equal((await db.query("SELECT count(*)::integer AS n FROM workflow_runs WHERE org_id=$1 AND kind='insight_topics'",[ctx.orgId])).rows[0]!.n,1);assert.equal(await dispatchMarketing(db),0);assert.equal((await db.query('SELECT count(*)::integer AS n FROM evidence_claims')).rows[0]!.n,0);
+   assert.equal(await read('r1'),firstId);assert.equal(await dispatchMarketing(db),0);await db.query("INSERT INTO outbox_events(org_id,event_id,event_type,aggregate_id,schema_version,payload,occurred_at,attempts,next_attempt_at) VALUES($1,$2,'source.changed',$3,1,$4,now(),0,now())",[ctx.orgId,uuid(),connectionId,JSON.stringify({sourceVersionIds:[firstId]})]);assert.equal(await dispatchMarketing(db),1);assert.equal((await db.query("SELECT count(*)::integer AS n FROM workflow_runs WHERE org_id=$1 AND kind='insight_topics'",[ctx.orgId])).rows[0]!.n,1);assert.equal(await dispatchMarketing(db),0);assert.equal((await db.query('SELECT count(*)::integer AS n FROM evidence_claims')).rows[0]!.n,0);
   });
   await t.test('a current approved policy and explicit mock gateway enqueue a simulated derivation',async()=>{
    const policy=await createPolicy(ctx,{name:'QA current source policy',businessScope:{business_lines:['shared']},accountIds:[],allowedActions:['content.publish'],stopConditions:{on_error:true}});const version=String((await db.query('SELECT id FROM policy_versions WHERE policy_id=$1',[policy.id])).rows[0]!.id);await activatePolicy(ctx,String(policy.id),version,1);

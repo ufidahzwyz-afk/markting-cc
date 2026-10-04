@@ -1,7 +1,8 @@
 import { DEMO_ORG_ID, type Database, type SqlExecutor } from '@boran/db';
 import { audit, emitOutbox, DomainError, nowIso, type ServiceContext } from '@boran/domain/core';
-import { assertActionExecutable, claimExecutionAction, completeExecutionAction, recoverExpiredActions } from '@boran/domain/execution';
+import { assertActionExecutable, claimExecutionAction, completeExecutionAction, recoverExpiredActions, reconcileServiceExecutionAction } from '@boran/domain/execution';
 import { createBrowserService, type BrowserCommandRow, type BrowserServiceDependencies } from './service';
+import type { LocalServicePrincipal } from './auth';
 
 export interface BrowserDispatchReadiness {
   /** Deployment-owned allowlist; never supplied by a public request or command body. */
@@ -34,12 +35,18 @@ export function browserDispatchEnvironment(env:NodeJS.ProcessEnv=process.env,reg
   const raw=env.BROWSER_SERVICE_ORGS?JSON.parse(env.BROWSER_SERVICE_ORGS) as unknown:{};
   if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.values(raw).some(ids=>!Array.isArray(ids)||ids.some(id=>typeof id!=='string'||!uuidPattern.test(id))))throw new DomainError('INVALID_SERVICE_ORGANIZATIONS',500,'Service organization binding is invalid');
   const serviceOrganizations=raw as Record<string,string[]>;
-  const bound=[...new Set(Object.values(serviceOrganizations).flat())];
+  const localMode=env.BROWSER_IDENTITY_MODE==='local_service';
+  if(localMode&&['production','staging'].includes(String(env.APP_ENV)))throw new DomainError('LOCAL_IDENTITY_FORBIDDEN',500,'Production service identity requires cloud OIDC');
+  const localRaw=env.BROWSER_LOCAL_SERVICES?JSON.parse(env.BROWSER_LOCAL_SERVICES) as unknown:{};
+  if(!localRaw||typeof localRaw!=='object'||Array.isArray(localRaw)||Object.entries(localRaw).some(([subject,entry])=>!/^boran-[a-z0-9-]{1,50}$/.test(subject)||!entry||typeof entry!=='object'||Array.isArray(entry)||!Array.isArray((entry as LocalServicePrincipal).orgIds)||(entry as LocalServicePrincipal).orgIds.some(id=>!uuidPattern.test(id))||!Array.isArray((entry as LocalServicePrincipal).roles)||(entry as LocalServicePrincipal).roles.some(role=>!/^[a-z][a-z0-9_-]{1,31}$/.test(role))))throw new DomainError('INVALID_LOCAL_SERVICE_BINDINGS',500,'Local service organization and role bindings are invalid');
+  const localServices=localRaw as Record<string,LocalServicePrincipal>;
+  const bound=[...new Set(localMode?Object.values(localServices).flatMap(service=>[...service.orgIds]):Object.values(serviceOrganizations).flat())];
   const requested=env.BROWSER_DISPATCH_ORGS?.split(',').map(id=>id.trim()).filter(Boolean);
   const orgIds=requested??(bound.length?bound:mode==='mock'?[DEMO_ORG_ID]:[]);
   if(orgIds.some(id=>!uuidPattern.test(id)||mode==='live'&&!bound.includes(id)))throw new DomainError('DISPATCH_ORGANIZATION_FORBIDDEN',403,'Live dispatch requires the service OIDC organization binding');
-  const readiness:BrowserDispatchReadiness={orgIds,identityConfigured:!!env.BROWSER_OIDC_AUDIENCE&&bound.length>0,configuredPlatforms:registeredPlatforms,writeEnabled:env.WRITE_ENABLED==='true',publishEnabled:env.PUBLISH_ENABLED==='true',adsWriteEnabled:env.ADS_WRITE_ENABLED==='true'};
-  return{mode:mode as 'mock'|'live',readiness,serviceOrganizations};
+  const identityConfigured=localMode?!!env.BROWSER_LOCAL_SERVICE_AUDIENCE&&!!env.BORAN_SERVICE_KEY_FILE&&!!env.BROWSER_LOCAL_REPLAY_ROOT&&bound.length>0:!!env.BROWSER_OIDC_AUDIENCE&&bound.length>0;
+  const readiness:BrowserDispatchReadiness={orgIds,identityConfigured,configuredPlatforms:registeredPlatforms,writeEnabled:env.WRITE_ENABLED==='true',publishEnabled:env.PUBLISH_ENABLED==='true',adsWriteEnabled:env.ADS_WRITE_ENABLED==='true'};
+  return{mode:mode as 'mock'|'live',readiness,serviceOrganizations,localServices,localIdentity:localMode};
 }
 function gaps(ctx: ServiceContext, config: BrowserDispatchReadiness, type: string, channel: string | null): string[] {
   const missing: string[] = [];
@@ -59,11 +66,12 @@ async function blocked(ctx: ServiceContext, tx: SqlExecutor, command: BrowserCom
   return true;
 }
 async function settleJob(ctx: ServiceContext, command: BrowserCommandRow) {
-  const evidence = (command.result_ref as {evidence?:Record<string,unknown>}|null)?.evidence;
+  const result = command.result_ref as {evidence?:Record<string,unknown>;status?:string;data?:Record<string,unknown>;externalId?:string}|null;
+  const evidence = result?.evidence, data=result?.data??{};
   if (!command.execution_action_id) return;
   const action=(await ctx.db.query("SELECT state FROM execution_actions WHERE org_id=$1 AND id=$2",[ctx.orgId,command.execution_action_id])).rows[0];
-  const state = command.state === 'succeeded' ? action?.state==='succeeded'?'published_verified':'unknown' : command.state === 'unknown' ? 'unknown' : command.state === 'running' ? 'executing' : command.state === 'failed' ? 'failed' : command.state === 'cancelled' ? 'cancelled' : 'blocked';
-  await ctx.db.query("UPDATE publish_jobs SET delivery_state=$3,verification_status=$4,verification_evidence_ref=$5,verified_at=$6,submission_receipt=$7,updated_at=$8 WHERE org_id=$1 AND execution_action_id=$2 AND delivery_state NOT IN ('published_verified','cancelled')",[ctx.orgId,command.execution_action_id,state,state==='published_verified'?'verified':state==='unknown'?'unknown':'unverified',evidence?JSON.stringify(evidence):null,state==='published_verified'?nowIso(ctx):null,JSON.stringify({browser_command_id:command.id,state:command.state,mode:ctx.mode}),nowIso(ctx)]);
+  const state = command.state === 'succeeded' ? action?.state==='succeeded'?'published_verified':'unknown' : result?.status==='in_review'?'in_review':result?.status==='submitted'?'submitted':result?.status==='rejected'?'rejected':command.state === 'unknown' ? 'unknown' : command.state === 'running' ? 'executing' : command.state === 'failed' ? 'failed' : command.state === 'cancelled' ? 'cancelled' : 'blocked';
+  await ctx.db.query("UPDATE publish_jobs SET delivery_state=$3,verification_status=$4,verification_evidence_ref=$5,verified_at=$6,submission_receipt=$7,updated_at=$8,external_id=COALESCE($9,external_id),published_url=COALESCE($10,published_url) WHERE org_id=$1 AND execution_action_id=$2 AND delivery_state NOT IN ('published_verified','cancelled')",[ctx.orgId,command.execution_action_id,state,state==='published_verified'?'verified':state==='unknown'?'unknown':'unverified',evidence?JSON.stringify(evidence):null,state==='published_verified'?nowIso(ctx):null,JSON.stringify({browser_command_id:command.id,state:command.state,status:result?.status,data,mode:ctx.mode}),nowIso(ctx),data.external_id??result?.externalId??null,data.published_url??null]);
 }
 
 /** Queue only persisted, already-authorized intents. Unique action/approval/budget allocation remains in domain execution. */
@@ -115,6 +123,8 @@ export async function queueBrowserActions(ctx: ServiceContext, config: BrowserDi
 export async function dispatchBrowserCommands(ctx: ServiceContext, config: BrowserDispatchReadiness, dependencies: BrowserServiceDependencies, workerId:string):Promise<{executed:number;blocked:number;deferred:number;recovered:number}> {
   allowed(ctx,config);const service=createBrowserService(ctx,dependencies);const recovered=await service.recoverExpired();await recoverExpiredActions(ctx);
   for(const command of recovered){await settleJob(ctx,command);}
+  const awaiting=(await ctx.db.query<BrowserCommandRow>("SELECT * FROM browser_commands b WHERE b.org_id=$1 AND b.state='unknown' AND b.command_type IN ('publish','ad_write') AND (b.next_attempt_at IS NULL OR b.next_attempt_at<=$2) AND (b.result_ref->>'externalId' IS NOT NULL OR b.result_ref->'data'->>'external_id' IS NOT NULL) AND NOT EXISTS(SELECT 1 FROM browser_commands r WHERE r.org_id=b.org_id AND r.command_type='reconcile' AND r.input_ref->'refs'->>'reconcile_command_id'=b.id::text AND r.state IN ('queued','running')) ORDER BY b.created_at,b.id LIMIT 20",[ctx.orgId,nowIso(ctx)])).rows;
+  for(const original of awaiting){await service.reconcile(original.id);await ctx.db.query("UPDATE browser_commands SET next_attempt_at=$3 WHERE org_id=$1 AND id=$2 AND state='unknown'",[ctx.orgId,original.id,new Date(Date.parse(nowIso(ctx))+60_000).toISOString()]);}
   let executed=0,blockedCount=0,deferred=0;
   const commands=(await ctx.db.query<BrowserCommandRow>("SELECT * FROM browser_commands WHERE org_id=$1 AND state='queued' AND (next_attempt_at IS NULL OR next_attempt_at<=$2) ORDER BY created_at,id LIMIT 20",[ctx.orgId,nowIso(ctx)])).rows;
   // At most two in flight; database/profile fencing also guards independent dispatcher processes.
@@ -131,11 +141,18 @@ export async function dispatchBrowserCommands(ctx: ServiceContext, config: Brows
       const result=await service.execute(command.id,workerId);executed++;
       if(actionClaim){
         const evidence=(result.result_ref as {evidence?:Record<string,unknown>}|null)?.evidence;
+        const receipt=result.result_ref as {status?:string;data?:Record<string,unknown>;externalId?:string}|null;
+        const data=receipt?.data??{};
         if(result.state==='blocked'){
           await ctx.db.query("UPDATE execution_actions SET state='blocked',last_error=$4,lease_owner=NULL,lease_until=NULL,version=version+1,updated_at=$5 WHERE org_id=$1 AND id=$2 AND fencing_token=$3 AND lease_owner=$6 AND state='executing'",[ctx.orgId,command.execution_action_id,actionClaim.token,JSON.stringify({code:'BROWSER_COMMAND_BLOCKED',command_id:command.id,mode:ctx.mode}),nowIso(ctx),workerId]);
-        }else await completeExecutionAction(ctx,command.execution_action_id!,actionClaim.token,{state:result.state==='succeeded'?'succeeded':result.state==='unknown'?'unknown':'failed',...(evidence?{afterSnapshot:{browser_command_id:result.id,...evidence},evidence:{...evidence,mode:ctx.mode}}:{})});
+        }else await completeExecutionAction(ctx,command.execution_action_id!,actionClaim.token,{state:result.state==='succeeded'?'succeeded':receipt?.status==='in_review'||receipt?.status==='submitted'?'verification_pending':result.state==='unknown'?'unknown':'failed',...(typeof data.external_id==='string'?{externalId:data.external_id}:receipt?.externalId?{externalId:receipt.externalId}:{}),...(evidence?{afterSnapshot:{browser_command_id:result.id,...data,...evidence},evidence:{...evidence,mode:ctx.mode}}:{})});
       }
-      await settleJob(ctx,result);
+      if(command.command_type==='reconcile'&&command.execution_action_id){
+        const receipt=result.result_ref as {status?:string;data?:Record<string,unknown>;evidence?:Record<string,unknown>}|null;
+        if(result.state==='succeeded'||receipt?.status==='rejected')await reconcileServiceExecutionAction(ctx,command.execution_action_id,{commandId:result.id,outcome:receipt?.status==='rejected'?'rejected':'found',afterSnapshot:{browser_command_id:result.id,...receipt?.data},...(typeof receipt?.data?.external_id==='string'?{externalId:receipt.data.external_id}:{})});
+        const original=command.input_ref.refs.reconcile_command_id;
+        await settleJob(ctx,original?await service.get(original):result);
+      }else await settleJob(ctx,result);
     }catch(error){const code=codeOf(error);if(transient.has(code)){
         if(actionClaim){const current=await service.get(command.id);if(current.state==='queued')await ctx.db.query("UPDATE execution_actions SET state='queued',lease_owner=NULL,lease_until=NULL,version=version+1,updated_at=$4 WHERE org_id=$1 AND id=$2 AND fencing_token=$3 AND lease_owner=$5 AND state='executing'",[ctx.orgId,command.execution_action_id,actionClaim.token,nowIso(ctx),workerId]);}
         deferred++;return;

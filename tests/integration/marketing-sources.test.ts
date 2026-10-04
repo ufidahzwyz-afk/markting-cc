@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {createTestDatabase,DEMO_ORG_ID,DEMO_OWNER_ID,type Database} from "@boran/db";
 import {stableHash,uuid,type ServiceContext} from "@boran/domain/core";
-import {createSourceReaders,ConfiguredSourceReader,type SourceSnapshot,type SourceCoverage} from "@boran/connectors/sources";
+import {createSourceReaders,ConfiguredSourceReader,MockSourceReader,type SourceSnapshot,type SourceCoverage} from "@boran/connectors/sources";
 import {ingestSourceRead,initializeBusinessMaster,getBusinessMaster,createEvidenceClaim,verifyEvidenceClaim,createTopic,getTopic,evaluateQualitativePriority,stableSortPriorities} from "@boran/domain/marketing";
 import {ConfiguredAiGateway,MockAiGateway,createAiGateway} from "@boran/ai";
 
@@ -12,7 +12,7 @@ async function connection(ctx:ServiceContext,kind:string,scope:Record<string,unk
 async function sourceVersion(ctx:ServiceContext,coverage:Record<string,unknown>){const document=uuid(),version=uuid();await ctx.db.query("INSERT INTO source_documents(id,org_id,provider,provider_file_id,title,visibility,owner_user_id,source_kind) VALUES($1,$2,'upload',$3,'匿名mock证据','internal',$4,'other')",[document,ctx.orgId,uuid(),ctx.actorId]);await ctx.db.query("INSERT INTO source_versions(id,org_id,document_id,revision,content_hash,object_key,mime_type,extraction_status,retrieved_at,visibility,coverage_json) VALUES($1,$2,$3,'1',$4,'private/mock/evidence','text/plain','ready',$5,'internal',$6)",[version,ctx.orgId,document,"b".repeat(64),ctx.now!().toISOString(),JSON.stringify(coverage)]);return version;}
 
 test("QA: four source access gaps remain failed and retain durable cursors",async()=>{
- const db=await createTestDatabase();try{const ctx=context(db);for(const reader of Object.values(createSourceReaders())){const id=await connection(ctx,reader.kind);const result=await reader.read({orgId:ctx.orgId,connectionId:id,sourceKind:reader.kind,scope:{},cursor:{checkpoint:"old"}});assert.equal(result.status,"failed");const saved=await ingestSourceRead(ctx,{connectionId:id,expectedCursorHash:stableHash({checkpoint:"old"}),result});assert.equal(saved.cursorAdvanced,false);assert.deepEqual((await db.query("SELECT cursor FROM connections WHERE id=$1",[id])).rows[0]!.cursor,{checkpoint:"old"});assert.equal((await db.query("SELECT id FROM source_versions")).rows.length,0);}}finally{await db.close();}
+ const db=await createTestDatabase();try{const ctx=context(db);for(const reader of Object.values(createSourceReaders())){const id=await connection(ctx,reader.kind);const result=await reader.read({orgId:ctx.orgId,connectionId:id,sourceKind:reader.kind,scope:{},cursor:{checkpoint:"old"}});assert.equal(result.status,"failed");await assert.rejects(ingestSourceRead(ctx,{connectionId:id,expectedCursorHash:stableHash({checkpoint:"old"}),result}),{code:"SOURCE_MODE_MISMATCH"});const simulated=await new MockSourceReader(reader.kind,result).read({orgId:ctx.orgId,connectionId:id,sourceKind:reader.kind,scope:{},cursor:{checkpoint:"old"}});const saved=await ingestSourceRead(ctx,{connectionId:id,expectedCursorHash:stableHash({checkpoint:"old"}),result:simulated});assert.equal(saved.cursorAdvanced,false);assert.deepEqual((await db.query("SELECT cursor FROM connections WHERE id=$1",[id])).rows[0]!.cursor,{checkpoint:"old"});assert.equal((await db.query("SELECT id FROM source_versions")).rows.length,0);}}finally{await db.close();}
 });
 
 test("QA: partial coverage cannot masquerade as complete or advance a global source checkpoint",async()=>{

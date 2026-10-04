@@ -338,3 +338,49 @@ export async function decideApproval(ctx:ServiceContext,approvalId:string,input:
     await audit(ctx,tx,`approval.${input.decision}`,"approval",approvalId);return result;
   });
 }
+
+/** Pure readback settlement for an authenticated runtime. Stopping writes does not erase historical results. */
+export async function reconcileServiceExecutionAction(ctx:ServiceContext,actionId:string,input:{commandId:string;outcome:'found'|'rejected'|'ambiguous';afterSnapshot?:Record<string,unknown>;externalId?:string}):Promise<Record<string,unknown>> {
+  if(ctx.actorType!=='service'||!ctx.roles.includes('service')||!ctx.actorId.trim()||ctx.actorId.length>200)throw new DomainError('SERVICE_IDENTITY_REQUIRED',403,'自动回读须使用已认证服务身份');
+  if(ctx.mode!=='live')throw new DomainError('MOCK_NOT_LIVE_SUCCESS',409,'模拟回读不能记录真实外部结果');
+  return ctx.db.transaction(async tx=>{
+    const action=(await tx.query('SELECT * FROM execution_actions WHERE org_id=$1 AND id=$2 FOR UPDATE',[ctx.orgId,actionId])).rows[0];if(!action)throw new DomainError('NOT_FOUND',404,'动作不存在');
+    const target=asObject(action.target),accountId=target.platform_account_id??target.account_id;
+    const account=(await tx.query('SELECT a.*,c.read_mode FROM platform_accounts a JOIN connections c ON c.org_id=a.org_id AND c.id=a.connection_id WHERE a.org_id=$1 AND a.id=$2',[ctx.orgId,accountId])).rows[0];
+    const command=(await tx.query('SELECT * FROM browser_commands WHERE org_id=$1 AND id=$2 FOR SHARE',[ctx.orgId,input.commandId])).rows[0];
+    const refs=asObject(asObject(command?.input_ref).refs),receipt=asObject(command?.result_ref),evidence=asObject(receipt.evidence),data=asObject(receipt.data);
+    if(!account||account.read_mode==='mock'||!command||command.command_type!=='reconcile'||command.execution_action_id!==actionId||command.platform_account_id!==accountId||asObject(command.input_ref).mode!=='live'||typeof refs.reconcile_command_id!=='string')throw new DomainError('RECONCILIATION_BINDING_REQUIRED',422,'回读命令、原动作及实际账号关联无效');
+    const original=(await tx.query('SELECT * FROM browser_commands WHERE org_id=$1 AND id=$2 FOR SHARE',[ctx.orgId,refs.reconcile_command_id])).rows[0];
+    if(!original||original.execution_action_id!==actionId||original.platform_account_id!==accountId||asObject(original.input_ref).mode!=='live'||asObject(original.result_ref).reconciliationCommandId!==command.id||!['publish','ad_write'].includes(String(original.command_type)))throw new DomainError('RECONCILIATION_BINDING_REQUIRED',422,'缺少原提交命令与已完成回读的准确关联');
+    if(stableHash(asObject(action.payload))!==action.payload_hash)throw new DomainError('PAYLOAD_CHANGED',409,'动作版本摘要不一致');
+    const originalRefs=asObject(asObject(original.input_ref).refs);
+    if(original.command_type==='publish'&&(action.action_type!=='external.publish'||originalRefs.content_version_id!==action.version_id)||original.command_type==='ad_write'&&(!String(action.action_type).startsWith('ads.')||originalRefs.action_snapshot_id!==actionId))throw new DomainError('RECONCILIATION_BINDING_REQUIRED',422,'原命令未绑定准确内容版本或广告动作');
+    if(input.externalId!==undefined&&input.externalId!==(data.external_id??receipt.externalId))throw new DomainError('RECONCILIATION_BINDING_REQUIRED',422,'传入外部资源ID与服务保存回读不一致');
+    const snapshot:Record<string,unknown>={browser_command_id:command.id,original_browser_command_id:original.id,...data};
+    if(input.afterSnapshot&&Object.entries(input.afterSnapshot).some(([key,value])=>snapshot[key]===undefined||stableHash(snapshot[key])!==stableHash(value)))throw new DomainError('RECONCILIATION_BINDING_REQUIRED',422,'调用方快照与服务保存的实际回读不一致');
+    const verified=evidence.verified===true&&['api_readback','browser_readback'].includes(String(evidence.kind))&&evidence.externalAccountId===account.account_external_id&&typeof evidence.evidenceRef==='string'&&evidence.evidenceRef.trim()&&typeof evidence.capturedAt==='string'&&Number.isFinite(Date.parse(evidence.capturedAt))&&command.finished_at&&Math.abs(Date.parse(evidence.capturedAt)-Date.parse(String(command.finished_at)))<=60_000;
+    let state:string='unknown';
+    if(input.outcome==='found'){
+      if(command.state!=='succeeded'||receipt.status!=='verified'||!verified||evidence.labelsVerified!==true)throw new DomainError('VERIFICATION_REQUIRED',422,'生效须有真实账号、标识及准确时点回读证据');
+      if(original.command_type==='publish'){
+        let url:URL;try{url=new URL(String(data.published_url));}catch{throw new DomainError('VERIFICATION_REQUIRED',422,'真实发布须有实际URL');}
+        if(evidence.contentHash!==action.payload_hash||typeof data.external_id!=='string'||!data.external_id||!['http:','https:'].includes(url.protocol)||url.username||url.password||['localhost','127.0.0.1','::1','[::1]'].includes(url.hostname))throw new DomainError('VERIFICATION_REQUIRED',422,'发布URL、资源ID或内容版本回读不一致');
+      }else{
+        const effective=asObject(data.effective_fields),payload=asObject(action.payload);
+        if(!Object.keys(effective).length||effective.accountId!==account.account_external_id||Object.entries(payload).some(([key,value])=>effective[key]===undefined||stableHash(effective[key])!==stableHash(value)))throw new DomainError('VERIFICATION_REQUIRED',422,'百度实际对象生效字段与请求或账号不一致');
+      }
+      state='succeeded';
+    }else if(input.outcome==='rejected'){
+      if(command.state!=='failed'||receipt.status!=='rejected'||data.review_status!=='rejected'||!verified)throw new DomainError('VERIFICATION_REQUIRED',422,'审核拒绝须有实际账号与拒绝状态回读');
+      state='failed';
+    }else if(command.state!=='unknown'||!['unknown','submitted','in_review'].includes(String(receipt.status)))throw new DomainError('VERIFICATION_REQUIRED',422,'未知回读不能冒充确定结果');
+    const priorProof=asObject(action.verification_evidence_ref);
+    if(['succeeded','failed'].includes(String(action.state))&&action.state===state&&priorProof.browser_command_id===command.id)return action;
+    if(!['unknown','submitted','verification_pending','waiting_review'].includes(String(action.state)))throw new DomainError('INVALID_STATE',409,'当前动作无需服务回读对账');
+    const savedProof={...evidence,browser_command_id:command.id,original_browser_command_id:original.id,outcome:input.outcome};
+    const result=(await tx.query('UPDATE execution_actions SET state=$3,after_snapshot=$4,external_id=COALESCE($5,external_id),verification_evidence_ref=$6,verified_at=$7,lease_owner=NULL,lease_until=NULL,version=version+1,updated_at=$8 WHERE org_id=$1 AND id=$2 RETURNING *',[ctx.orgId,actionId,state,JSON.stringify(snapshot),data.external_id??receipt.externalId??null,JSON.stringify(savedProof),state==='succeeded'?evidence.capturedAt:null,nowIso(ctx)])).rows[0]!;
+    const attempt=(await tx.query('SELECT COALESCE(max(attempt_no),0)+1 AS n FROM action_attempts WHERE org_id=$1 AND action_id=$2',[ctx.orgId,actionId])).rows[0]!;
+    await tx.query("INSERT INTO action_attempts(id,org_id,action_id,attempt_no,request_id,request_digest,response_digest,result,started_at,finished_at,phase) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'reconcile')",[uuid(),ctx.orgId,actionId,attempt.n,uuid(),action.payload_hash,stableHash({snapshot,evidence: savedProof}),state==='succeeded'?'success':state==='failed'?'failure':'unknown',command.started_at??command.created_at,command.finished_at??nowIso(ctx)]);
+    await audit(ctx,tx,'execution.service_reconciled','execution_action',actionId,{commandId:command.id,outcome:input.outcome});await emitOutbox(ctx,tx,'execution.result',actionId,{state,commandId:command.id,mode:ctx.mode});return result;
+  });
+}

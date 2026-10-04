@@ -46,7 +46,12 @@ services:
     environment:
       <<: *app-environment
       BORAN_MEDIA_ROOT: /app/.local/media
-    volumes: [media-data:/app/.local/media]
+      BORAN_SECRET_STORE_ROOT: /var/lib/boran/secrets/store
+      BORAN_SECRET_KEY_FILE: /var/lib/boran/secrets/master.key
+      BORAN_SOURCE_STORE_ROOT: /var/lib/boran/sources
+      BORAN_SOURCE_ROOT: /var/lib/boran/sources
+      BROWSER_RUNTIME_URL: http://browser-runtime:3003
+    volumes: [media-data:/app/.local/media, secrets-data:/var/lib/boran/secrets, sources-data:/var/lib/boran/sources]
     command: [npm, run, dev, --workspace, '@boran/ops']
     ports: ['127.0.0.1:3000:3000']
     depends_on:
@@ -72,6 +77,12 @@ services:
       WORKER_PORT: '3002'
       WORKER_BIND: 0.0.0.0
       BROWSER_RUNTIME_INTERNAL_URL: http://browser-runtime:3003
+      BROWSER_RUNTIME_URL: http://browser-runtime:3003
+      BORAN_SECRET_STORE_ROOT: /var/lib/boran/secrets/store
+      BORAN_SECRET_KEY_FILE: /var/lib/boran/secrets/master.key
+      BORAN_SOURCE_STORE_ROOT: /var/lib/boran/sources
+      BORAN_SOURCE_ROOT: /var/lib/boran/sources
+    volumes: [secrets-data:/var/lib/boran/secrets, sources-data:/var/lib/boran/sources]
     command: [npm, run, start, --workspace, '@boran/worker']
     depends_on:
       init: { condition: service_completed_successfully }
@@ -86,7 +97,11 @@ services:
       BROWSER_RUNTIME_BIND: 0.0.0.0
       BROWSER_PROFILE_ROOT: /var/lib/boran/browser-profiles
       BROWSER_RUNTIME_PORT: '3003'
-    volumes: [browser-profiles:/var/lib/boran/browser-profiles]
+      BORAN_SECRET_STORE_ROOT: /var/lib/boran/secrets/store
+      BORAN_SECRET_KEY_FILE: /var/lib/boran/secrets/master.key
+      BORAN_SOURCE_STORE_ROOT: /var/lib/boran/sources
+      BORAN_SOURCE_ROOT: /var/lib/boran/sources
+    volumes: [browser-profiles:/var/lib/boran/browser-profiles, secrets-data:/var/lib/boran/secrets, sources-data:/var/lib/boran/sources]
     shm_size: 512mb
     depends_on:
       init: { condition: service_completed_successfully }
@@ -101,6 +116,8 @@ volumes:
   postgres-data:
   media-data:
   browser-profiles:
+  secrets-data:
+  sources-data:
 networks:
   backend: { internal: true }
   frontend:

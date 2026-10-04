@@ -1,0 +1,285 @@
+{
+  "checked_at": "2026-10-04T05:29:49.575659+00:00",
+  "scope": "Final engineering integration of the committed V1.4 increment; synthetic fixtures only; real business acceptance remains pending",
+  "all_tests": {
+    "tests": 444,
+    "pass": 444,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "command": "npm test (same scripts/test.mjs entrypoint)",
+    "test_concurrency": 1,
+    "isolated_postgresql_17": true,
+    "native_chromium": true,
+    "actual_next_http_servers": true,
+    "all_conditional_test_environments_enabled": true
+  },
+  "typecheck": {
+    "passed_workspaces": 10,
+    "command": "npm run typecheck"
+  },
+  "production_build": {
+    "passed_apps": [
+      "ops",
+      "public-site"
+    ],
+    "command": "BORAN_NEXT_DIST_DIR=.next-v14-check npm run build",
+    "baseline_build_directory_preserved": true
+  },
+  "contracts": {
+    "generated_files_consistent": true,
+    "strict_request_response_validation": true
+  },
+  "ui": {
+    "rounds": [
+      {
+        "round": "v14-ui-proof",
+        "passed": 50,
+        "failed": 0,
+        "page_errors": 0
+      },
+      {
+        "round": "v14-ui-proof-second",
+        "passed": 46,
+        "failed": 0,
+        "page_errors": 0
+      },
+      {
+        "round": "v14-ui-proof-capabilities",
+        "passed": 8,
+        "failed": 0,
+        "page_errors": 0
+      }
+    ],
+    "passed_checks": 104,
+    "viewports": [
+      1440,
+      390
+    ],
+    "page_errors": 0,
+    "real_provider_called": false
+  },
+  "shared_database_read_isolation": {
+    "checked_at": "2026-10-04T05:27:12.950Z",
+    "synthetic_fixture": true,
+    "shared_database_mock_reads_blocked": true,
+    "checks": [
+      {
+        "path": "/sources",
+        "status": 403,
+        "passed": true
+      },
+      {
+        "path": "/evidence-claims",
+        "status": 403,
+        "passed": true
+      },
+      {
+        "path": "/content-items",
+        "status": 403,
+        "passed": true
+      },
+      {
+        "path": "/connections",
+        "status": 403,
+        "passed": true
+      },
+      {
+        "path": "/automation/status",
+        "status": 403,
+        "passed": true
+      },
+      {
+        "path": "/model-config",
+        "status": 403,
+        "passed": true
+      }
+    ]
+  },
+  "preservation": {
+    "original_001_002_migrations": [
+      {
+        "file": "packages/db/migrations/001_foundation.down.sql",
+        "sha256": "7ce752bd8c458fe74dbe0791cda47ece493735256899ff37a7504b1f75e10894"
+      },
+      {
+        "file": "packages/db/migrations/001_foundation.up.sql",
+        "sha256": "0a00a641ed3b600dd48db31bf61089ac10b1ad89b3521c260943e0caafcaff76"
+      },
+      {
+        "file": "packages/db/migrations/002_authorization_guards.down.sql",
+        "sha256": "0e2030ccf372929a3eb9385fe939b6f935717a22d1cccc8dd6990d327d80a18c"
+      },
+      {
+        "file": "packages/db/migrations/002_authorization_guards.up.sql",
+        "sha256": "7162773d0906340a7bb1f45abb60754eb72df137759e5d03cc2d2e5705c314f4"
+      }
+    ],
+    "additive_003_005_upgrade_keeps_existing_business_rows_versions_and_modes": true,
+    "baseline_services_and_business_database_not_replaced": true,
+    "backup_restore_checks": "v14-runtime-secrets-checks.json"
+  },
+  "integration_cases": [
+    "Immutable source change produces evidence-bound insight, topic and editable private draft through durable worker jobs",
+    "Second source revision appends an AI version and keeps manual edits and historical evidence",
+    "Paid provider receipt resumes after worker crash without a second provider request",
+    "Quota exhaustion before HTTP persists backpressure; repair/unknown paid calls cannot be automatically repeated",
+    "Superseded unsubmitted source and stale worker leases cannot incur provider calls",
+    "Drive scope changes, missing coverage and image-only PPTX remain explicit gaps",
+    "Questions do not confirm business facts; confirmed revocation invalidates pending actions",
+    "Encrypted credentials, local sessions and internal service identity survive restart without exposing secrets",
+    "Actual Chromium identity, fixed recipe, capability proof expiry, config/session revocation and result readback fail closed",
+    "Anonymous mock reads cannot expose live data and historical mock content cannot be published as live",
+    "Concurrent database actions, receipts and budget reservations remain idempotent and scoped"
+  ],
+  "compose_base_and_live_readonly_config_valid": true,
+  "real_business_acceptance": {
+    "user_mac_upgraded": false,
+    "actual_drive_changes_to_deepseek_draft": false,
+    "actual_model_ids_protocol_and_pricing_verified": false,
+    "actual_channel_login_publish_baidu_and_effects_readback": false,
+    "weekly_plan_media_aifanfan_notifications_archive_optimization_complete": false,
+    "seven_business_days_reconciled": false,
+    "detail": "../v14-delivery-state.md"
+  },
+  "code_file_sha256": {
+    "apps/browser-runtime/src/auth.ts": "a28c75225695391a7654a3968a12d51fc713442c39ade4c723ef0a77bb306f07",
+    "apps/browser-runtime/src/capabilities.ts": "b93231df9e7245e8647776f7426225cfa461e661741f4b7284c3712ac955d8e4",
+    "apps/browser-runtime/src/challenges.ts": "d6a57b13109c16c969f1d5a2cd6efb7d434638c402249a571f757c920468231c",
+    "apps/browser-runtime/src/chatgpt-source.ts": "67cc6c82f40a37f9a595a0a708af5e4ff6b2b26c7977ba7fdfc15d079047c603",
+    "apps/browser-runtime/src/client.ts": "cc0c407ba11505176377dfd37852e9211731150131e5d69ae3f8f6be33acbe8c",
+    "apps/browser-runtime/src/dispatcher.ts": "04b55f109f3617903ed5b43c796f4c4a7f09237ec77f63562af3effa2215c2f4",
+    "apps/browser-runtime/src/index.ts": "caa169845f70d3c039895acb347ea2fda8aaec1ac231133e5807c676b695e2f9",
+    "apps/browser-runtime/src/main.ts": "e8c796962d413f92defeb3943f9aff05291cd19ff818d2962b7249ee812e3e41",
+    "apps/browser-runtime/src/profiles.ts": "8e878fbd8fbc31b86760d490145b5239afd09906588284e717c05c64cccf8bcb",
+    "apps/browser-runtime/src/recipe-hooks.ts": "40d935989fbad9dac607aa83659641a5a2471b7bd1f5d8951742d4e768710745",
+    "apps/browser-runtime/src/recipes.ts": "b3f3c481c4e19b5e597fe85c53486637e19f465ea292ff9c93d4dd4720d8ae22",
+    "apps/browser-runtime/src/runtime-hooks.ts": "08f5cbf93e05e7e9c989e9e7feb85a1a67926523d237b852737ade38335e5fa9",
+    "apps/browser-runtime/src/server.ts": "ebae6b61b502251c8dddc8d074613b46e6aef348e66bdeb9ef5f90a3f7a44f40",
+    "apps/browser-runtime/src/service.ts": "03db046a850039437549d2251ba66c77b4ae611626b56bbea6168115a75c310f",
+    "apps/browser-runtime/tests/auth.test.ts": "0363da0c4002e9236e8f0326ba30f00f247bbf2f62b4fcfe06681a920c98fbd5",
+    "apps/browser-runtime/tests/baidu-native.test.ts": "f095d4338e9aad6e0db7587cce032f8cb671434ee971e1fa4966114227419521",
+    "apps/browser-runtime/tests/capabilities.test.ts": "28bc8ea14831d720e59dbb0c5ac40884feead7984c33833b09a24c585f28e8de",
+    "apps/browser-runtime/tests/challenges.test.ts": "303d89e046144b88f2b46ade8fac65f2d2585132f0dd5e1bdb07b4e77d71071d",
+    "apps/browser-runtime/tests/chatgpt-source.test.ts": "52fda664adfd3acedee5b1f2ffabc52687b9bd245d680bdf2a43816d9eb6566e",
+    "apps/browser-runtime/tests/dispatcher.test.ts": "e651d5db853c2645516acd7b57e5cae835ab202594c0330ad8e1ea37874ffcba",
+    "apps/browser-runtime/tests/recipes.test.ts": "9692d8cb3c90e92f360917d14d034955c3173d141c2c43cce17fc71e2a0bd4e7",
+    "apps/ops/next.config.ts": "425acfd5528f20466bcb888ce58f89d5dd82edc729ce33027e84304d44cca481",
+    "apps/ops/package.json": "9f4eed7cbdf62dd7a7c5e8b6a76203e24ca0a495e3c43f916b1796337cb74f00",
+    "apps/ops/src/app/api/v1/[...segments]/route.ts": "ef53673ec5f696af8ead5aba174ce0395f8747b3092a32b526ec6e3c473c28a0",
+    "apps/ops/src/app/api/v1/local-auth/login/route.ts": "d417ff708488f36285539a497d9f664b3c14f049227e9bf880394cde9efb8012",
+    "apps/ops/src/app/api/v1/local-auth/logout/route.ts": "1fc2da08ee7e0d258de93213a7137805ca232f88f085b7dac68bc6facde4ef5f",
+    "apps/ops/src/app/globals.css": "588e9493cf890078dc6f5c2d2a10115d5a2d70348850f97e95d23ea952e4e229",
+    "apps/ops/src/app/layout.tsx": "16e39852bd8758f3db6f1cb9b56499f1bf2695ceafb7caf7ba8ad3fce5f52d99",
+    "apps/ops/src/app/login/page.tsx": "31b819502f7575d7a434570ac9db20704891a50086de1adcc56e1f0b84214041",
+    "apps/ops/src/components/automation-drafts.tsx": "f525b36e5550e93c1c8aa8105fd5b2c455381f4a42a1e3888ea47f59da55d4f2",
+    "apps/ops/src/components/automation-recommendations.tsx": "5472667467fc9ef9c420e077533e093bd7f9bedcd2f183788b2238e95a810295",
+    "apps/ops/src/components/content-workspace.tsx": "36cb301fc81fb2af50078180b6e862600acf8e8032e6c0f973936fb30bd94a49",
+    "apps/ops/src/components/overview-workspace.tsx": "30c55d9d888beb2ce131867bd173b0d04eacbd3041c07709f4bf1a9f33347fcb",
+    "apps/ops/src/components/settings-content.tsx": "7b5833c0ec24c2cd85aad8d8c2c49f4d3d9926730c36753e8572daa42fe6b0a0",
+    "apps/ops/src/components/shell.tsx": "ed5d36db44ddf5072c97d0f205746b9b97aa799be1c4e19e296f8df33ed9d416",
+    "apps/ops/src/components/themes-workspace.tsx": "fcccda40412dd7158229d6e470ee495a35e1efe08092f05e8b465e22c97c4f0a",
+    "apps/ops/src/lib/access.ts": "2275e9bb18e8a8303628336ee19bda6be633b14e67815272f1d9ab131e3d3fad",
+    "apps/ops/src/lib/client-api.ts": "175d4d9162f6d92c520cb5bfa21ccf6806540bc08d997e84a7261a90030ebf24",
+    "apps/ops/src/lib/handlers/automation.ts": "6ea5875e3e247fce6317d7b4f34764c32b0411fca11484d1d6f3cc88cf723b7d",
+    "apps/ops/src/lib/handlers/browser.ts": "c24740708fb1bc4509e5d6072190906b27c1ca66a40ba3317a7eb4af7174ad3d",
+    "apps/ops/src/lib/handlers/content.ts": "c927a6824198b4a4112565200aaeeb5cac34005f002f56e3dbdef7bc71bd5358",
+    "apps/ops/src/lib/handlers/credentials.ts": "e57fabcaf773952b3f4841789e7f996b55c09ced030a5a66e2ef6cafa00cf75e",
+    "apps/ops/src/lib/handlers/execution.ts": "af4d175e679d95318999525fc7b06b5ec71160cdb0230e3654f3de2dbc70a1c2",
+    "apps/ops/src/lib/handlers/marketing.ts": "b70d42611f0be874afec87d5b58b0ca10e2c6751bb18a2983fc5327d737e61a2",
+    "apps/ops/src/lib/handlers/model.ts": "d97776e1509c1297bdecf51ce8f661114a90d46125c2f5a4ae4c755a1056d0b9",
+    "apps/ops/src/lib/local-identity.ts": "ef9f5f81c669c25c8308b1a9de97c079849fd71142d16a2f1a37df5469b2e59a",
+    "apps/ops/src/lib/server-context.ts": "65ed1c8fec2d06b00fef46d4a9856d484dfa4b26e19cf30d7a9fc181aac8cbef",
+    "apps/ops/src/lib/source-config.ts": "1ee11a883e3ea35d8f0a59329e1bbdd9797ac6611df1ec9ac8129c4d65664f0d",
+    "apps/ops/src/proxy.ts": "d9f3db527e284dffd733b9bdb23933ba87dc16b0080742775e21c43ee0892059",
+    "apps/ops/tests/automation-handler.test.ts": "6c23c57edf011ba8716ecef3984e0a6148d8713697eebe05b98fd410b704277a",
+    "apps/ops/tests/browser-handler.test.ts": "484f8c23de57379b8a2da8152a363c6e8342d03a0de10e3000e9c92cba189043",
+    "apps/ops/tests/credentials-handler.test.ts": "04383917e190fe6c82a259b7774b6d2ecfe19a227c3d9962f377bec5f1986980",
+    "apps/ops/tests/local-identity.test.ts": "fc4004365931c7a49ca8c0486a8ede0e39b30573e2d8a0c60141a7d1c1510e5e",
+    "apps/ops/tests/marketing-handler.test.ts": "36a9fedfc30c4b04b0e3b14a6b76507a46845075bfa76dde4706ae5b964f401a",
+    "apps/ops/tests/model-handler.test.ts": "101868e36e27caab214b9ffe5dba6125f12b49dee4c241f970ecab308eaa7f3f",
+    "apps/ops/tests/platform-account-control.test.ts": "0b0a7867b126e142a1368a774cc2e35d4a2765d951ba41fc6703e30824ea71ce",
+    "apps/ops/tests/source-config.test.ts": "fa85ca66b3ef2faef10119e56630f4f1ee3364f277436b3d6c2a6d78263b21b5",
+    "apps/public-site/next.config.ts": "464e9ce4084d4651d4cb5d8f8d3b927571b2f31d8b7b98c80756fdff94b7650c",
+    "apps/public-site/src/app/[[...path]]/page.tsx": "bbdc2102b7182a353ac583c0f1c4e3f3ee232f56e3de3a2256f2c50579cd0e97",
+    "apps/public-site/src/app/sitemap.ts": "7e8b178d9b86539b6bc4ba3f4397e3c9d55aeaee853ca6906c0d1b5e7746d3b7",
+    "apps/worker/package.json": "f77fd72572965186414c6da61d0a7feb1a7dcfd9aff7beff4a851b6aaaed393d",
+    "apps/worker/src/ai-usage.ts": "2d287724908f34eaf02c86d93dc1114ec38724920525af24913fec045efd802c",
+    "apps/worker/src/automation-runtime.ts": "4c88f96ae00c3161a101f3c7fe7d9a79a89bde20772ef6d0d9724f85134a9e1c",
+    "apps/worker/src/browser-dispatch.ts": "66bdbd50579eecc231da0f051bb9d08a9bf877f05c2ec3a1da6d6753e6c87a58",
+    "apps/worker/src/browser-source-client.ts": "3be9c7819f9cd8c2c3fea1a3d444f82e6786b3548b8cda34ceed789a3ee3c50e",
+    "apps/worker/src/handlers.ts": "04eb94737ae4ce076a74783f63639acde54c676ea9a18bd171134ec18c30e4eb",
+    "apps/worker/src/index.ts": "7a9a7816d2a6e9b4d9e63243f4e39f677e8151870ac01b8bca24838f6775cfeb",
+    "apps/worker/src/marketing-dispatch.ts": "9f4f6a4001f7086aa55d9004c9939ff49c79725b391597681dd93e540c1407ff",
+    "apps/worker/src/marketing-workflow.ts": "5af31d453d4f69648cb95c545cce0bfb27148cd61e0d9ef3c5d3443fb2498375",
+    "apps/worker/src/queue.ts": "335627c3087f220bfa343b9887749ba2115c1bd5fab63a9a7dc6f97cd1d41d1d",
+    "apps/worker/src/report-dispatch.ts": "f38cdd434759be4d4a6c5dba3debd7969cf3f4c8e29148ffd87f5c0bcc1f293a",
+    "apps/worker/src/runner.ts": "ce8dad9bde9fc6b9ae348d3e4b6928dd9e2be1b634e096e473c69e7c3cdd162b",
+    "apps/worker/src/scheduler.ts": "51cdb0f931eca630795229da446f502ca2d68493878002794cac267fe3b3f16b",
+    "apps/worker/tests/ai-usage.test.ts": "61e2a2a5421255c4b4980c17d417be866724a0aa197119254867a74f070f34cb",
+    "apps/worker/tests/browser-source-client.test.ts": "26b5484e00a123cdb0d36378c7279de22169b765be0a5f26193ab89b0c527b35",
+    "apps/worker/tests/live-marketing-dispatch.test.ts": "aec5794ce0050a02d2e09c15f2c404c925fbf8cdebdfd142afc82ae3a1c23db5",
+    "apps/worker/tests/marketing-dispatch.test.ts": "a638ffe4b45b175b2779a51927c3e868fc1fbe70ddc5ead3d115dc9629a12b4f",
+    "apps/worker/tests/workflow-backpressure.test.ts": "14c59e33e373cf225b5815ebdbfc06fa36ce852e64e52ad7eff4e24f71f7e35c",
+    "infra/compose.live-readonly.yaml": "8e751e28164efeaef640511b561fb0a81637522ec5e735d110fc01d26f6d5367",
+    "infra/compose.yaml": "25c8dab74f336febd9b00b733a98096ffb5f5075ab821aca77d5a84ad65a8604",
+    "packages/ai/src/config.ts": "8927bc5d25f2af85ab474ec6cc818e9b90c80450841275e43b1a00aba05ae6dd",
+    "packages/ai/src/deepseek.ts": "915608a49caddfc677497e84d266880ef717122681124a202f2d92b86644b2d8",
+    "packages/ai/src/evidence.ts": "56887582f8a2e2ef7ea4912b18a5c3264b24c92cdc0dd2ec180fd96b4638419a",
+    "packages/ai/src/index.ts": "b0c1f16d2a23a40383d124d68a5f6622377bbe3d6c5bc8d3c529d5be486ac7bc",
+    "packages/ai/src/limits.ts": "018f34c319936ee2ec0c76cc0948b7c3673cacd30d6c116d4d70895142d69fc5",
+    "packages/ai/src/privacy.ts": "e919078ad49bfcaacab31f4537037d32a46b3db1fc82c6049e6dcf617d610773",
+    "packages/ai/src/prompts.ts": "fa049ad4e6a43e4a6d02bdd06fdae1f0fb7ee30d21ed169dd8873c2f68dd14ce",
+    "packages/ai/src/run-metadata.ts": "c95132f35aeb53b099cdcefdd05f42b1dc2497931cd7c4f81c4271cf5fc0c708",
+    "packages/ai/src/types.ts": "065cb7434dcd99f8d9e4af29e6f0983e4027142a40f25df602b94888c228ea78",
+    "packages/ai/tests/deepseek.test.ts": "4a2c56e5d1ea384a49d1c1cfc4f70a2e6ee81a1df2ed2e954dbf505c908168ca",
+    "packages/ai/tests/run-metadata.test.ts": "7c172b3c94514ca97ac7c581a7852d2ffe16330e8b9db92b110fb8f453e6d524",
+    "packages/connectors/package.json": "aaab4e84fa35f5c5a7d24a329ad34575633672f6661918e827c96e9bd1572792",
+    "packages/connectors/src/baidu.ts": "77db4132d6e240dca20f46d8b1e20a4144b814d0b4b9b55d2d5506d8e37db546",
+    "packages/connectors/src/contracts.ts": "01c77b22a97db0f07d79f70f597faa3c1ab26be611139885384832254e6fe9ae",
+    "packages/connectors/src/platforms.ts": "a30901a9ccff101d5a41b5ab91a5e7e2ea76ad48377674860762c227c44add08",
+    "packages/connectors/src/secrets.ts": "3b197745252b1b0a6dd2c4e4eb1c2320ff63692e2baba0a26d50495a53b5d82f",
+    "packages/connectors/src/source-content.ts": "2167860b183c4283eff07fe723cf8a4ced60a8a5c99b9d7f19120e124c090d62",
+    "packages/connectors/src/source-runtime.ts": "7c7fc6f5a1aac197e68ecad5eae7a68dd93388a5d8eff093d56ae4c494b5e24e",
+    "packages/connectors/src/sources.ts": "bc43ba7179bc76c171a1206acf1b439d46b0a43000dc9ef48e9c0a6ac35520da",
+    "packages/connectors/tests/private-runtime.test.ts": "507abcb2c0fde89f181348e0ebf873e24b493c3be32f90c1d56cf7650d5a954d",
+    "packages/connectors/tests/secrets.test.ts": "e9da407868cab2cb3b3bf0c148e3eebc3d9c75060b12ba9528279c90a61c7836",
+    "packages/connectors/tests/source-runtime.test.ts": "9b0b950759a815b0d76dc90de6efca4e953e80c511bae31bc654d49575b017b8",
+    "packages/contracts/schemas/ai_outputs.schema.json": "c959538deb961ed832f4e6599fea1ae7239ff5e4e8f847ba483fdab26c9ed62f",
+    "packages/contracts/schemas/openapi.json": "a51047a021660a2dea9051fdf48be313cda42922a6ebbaf653d34da2f52a5b5c",
+    "packages/contracts/src/ai.generated.ts": "468fe1dff75f33fe2474f46eb87d7a82207a85b33fa4fb83bc31d20b878aa838",
+    "packages/contracts/src/openapi.generated.ts": "556f5e6ba52d34ac02a60934ad9a9ec95987e57c82e2dbf0b56b0f424c6b3630",
+    "packages/contracts/src/runtime.ts": "a2a22916714b9373c8a05b71bd01119a0d47e26b190a5b6d79753d8e1a83be66",
+    "packages/contracts/src/semantics.ts": "d565f93bb80a2ac1a6c5f4acf8b9361bf5c9852b39e03f2aaa96aa55354c55d0",
+    "packages/db/migrations/003_live_marketing_pipeline.down.sql": "1e59e7a521291ffa853494c718f911c72e933df37751f78d3e3da68cdf9be3ad",
+    "packages/db/migrations/003_live_marketing_pipeline.up.sql": "7c529050526b373b51fd47936ba464808cb332d29a1413f038f80e88e0a9807b",
+    "packages/db/migrations/004_ai_usage_reservations.down.sql": "9b040a67d9bef22bb563d7e8ed26fdcb83d73ef1e0b2381e7a6ed00be239316b",
+    "packages/db/migrations/004_ai_usage_reservations.up.sql": "11338e0f6e9c49d24a0f72c3fb44a41cb8f6507d69ee439c7d8ef21b4f47d03b",
+    "packages/db/migrations/005_workflow_backpressure.down.sql": "d0c063fef486a0c343c19f547b1b570cc20a7852fd195a2e9eb29900ab276108",
+    "packages/db/migrations/005_workflow_backpressure.up.sql": "8c9b18905381d45ca355d39640aecc102115986b5358ddaed1e7b896643c0341",
+    "packages/db/tests/foundation.test.ts": "eb55fdf29a8ce3e77c216d5e491319fc72b1a30753509230a7f89b7e97236c45",
+    "packages/domain/package.json": "6c0f3b67b4a04ebf1a19657b7a17dc9cdf06bf77964c81823a11a59d4c1929d5",
+    "packages/domain/src/content.ts": "729f884e488b99bd78bb6ee6b3416b899f6848f904662e740689edcef18e8789",
+    "packages/domain/src/core.ts": "7bda21c7851aa83a36af8634c2c77b19d26dc59e4065bce973d971e68d588ab5",
+    "packages/domain/src/execution.ts": "32ffee3b53ade2ef9c64de5cb805de0835435a4af7bf53fbdee153eac386c712",
+    "packages/domain/src/index.ts": "8fd91a1bdfe609962d7129a9b6b146960d55c014c9378f8491838cd00d08c2c0",
+    "packages/domain/src/marketing-pipeline.ts": "a311ee99208bc40f70e7bbb97c77ac6e82dd515dcd730584378146e83603bb31",
+    "packages/domain/src/marketing-read-scope.ts": "af2ace60a17ce16b5865de5f3d2afec7e975d0f2871773b6f275de1dfcf8a22c",
+    "packages/domain/src/marketing.ts": "577a37b65769a40d3cc1f0e7d13cc4ef4f8497578cf9d78551dd1a524c3e175c",
+    "packages/domain/src/workspace.ts": "09d893b88a5b6e07fe50db55492944f847f848915ae48c50741c1c3f506bef71",
+    "packages/domain/tests/content.test.ts": "b8181349762032bc6eef7efc995f7c46ac97b0e09026546d917f48ebb78e5b70",
+    "packages/domain/tests/marketing-pipeline.test.ts": "5615c42093873532da2b3cb24940c0fcd5720729382b879f9e5a5be272c094f3",
+    "packages/domain/tests/marketing-reconciliation.test.ts": "fbeb9c45d8a662d241b585ae15f8a0ae4317e6f70eca44d5c5dd1ac4045da2ff",
+    "scripts/egress-proxy.mjs": "7bd603c7b0ba575b8c113174aaaddf814de496921a4f6db294a8e46117166bb5",
+    "scripts/initialize-private-runtime.mjs": "18d121dac2d0d2bb0636684647884926366cf2a153d72ee1b115ca0b0ccfd2b3",
+    "scripts/local-identity.ts": "a28b76985153ce308bc5d220a0913f2be9fbf574bc01da27f3f1a7c83edd0f6c",
+    "scripts/private-backup.mjs": "96028f4e106c72c409858890c056cbb9d4b1b0481af37e2f3b25b87f97df4ac7",
+    "scripts/private-file-manifest.mjs": "5690285dbe8e07c5bf054f219e866c6860fd43ecfff0b18f3ca4426699fa79a2",
+    "tests/integration/browser-security.test.ts": "c1871bc2ada56a6ff52d7f57ac8893d4dd8f8c6c8f93659eaafe73d0b4c2f306",
+    "tests/integration/content-read-isolation.test.ts": "8fce550dc93b617e2cb177a52ce7d63246565d57bfe475f8e78fd9320026a487",
+    "tests/integration/live-marketing-loop.test.ts": "e74ccc8a993962400e15324367f2d588f3da86f5b1e9149b74cd29b0c2b2490a",
+    "tests/integration/marketing-sources.test.ts": "2963aee43ed7836d0b33e80caf5cd4324214487d6e0ac75231329490d93f25d3",
+    "tests/integration/report-dispatch.test.ts": "8152b6fb210440e4077c14c1fa051eee3eaea60c2ccbd4215bff12a49aa5d0ee"
+  }
+}

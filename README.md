@@ -1,17 +1,19 @@
 # 泊冉市场推广自动化系统
 
-这是产品 V1 / PRD 1.2 / 业务基线 V1.4 的本地开发测试工程。管理台已接入持久数据库：两名运营共享主题和推进任务、内容版本与官网页面、留资与线索、广告报表和复盘。后台使用持久任务、幂等键、授权复核和租约恢复。真实平台、模型网关和生产环境仍需接入及实测，工程测试通过不代表 AC35 七个完整业务日或 AC47 十六渠道已经验收。
+这是产品 V1 / PRD 1.2 / 业务基线 V1.4 的本地开发测试工程。管理台已接入持久数据库：两名运营共享主题和推进任务、内容版本与官网页面、留资与线索、广告报表和复盘。后台使用持久任务、幂等键、授权复核和租约恢复。真实资料、账号凭据与逐平台适配仍需本地配置及实测，工程测试通过不代表 AC35 七个完整业务日或 AC47 十六渠道已经验收。
+
+2026-10-04 的 V1.4 增量已实现四源运行读取、DeepSeek 洞察与私有草稿流水线、后台加密凭据及自动登录运行框架。来源二次变化、人工稿保留和重启回执恢复已通过隔离工程联调。真实账号与业务资料尚未在此环境配置，不能计为真实业务验收；逐平台适配和剩余范围见 [本次交付状态](docs/v14-delivery-state.md)。
 
 ## Mac Studio（Apple 芯片）
 
 安装 **Docker Desktop for Apple Silicon**，启动 Docker Desktop。首次下载当前集成版本：
 
 ```sh
-git clone --branch codex/v1-parallel-development --single-branch https://github.com/ufidahzwyz-afk/markting-cc.git
+git clone --branch codex/v14-live-automation --single-branch https://github.com/ufidahzwyz-afk/markting-cc.git
 cd markting-cc
 ```
 
-已有仓库时先获取并切换到 `codex/v1-parallel-development`。在仓库根目录执行：
+已有安装先按 [私有备份与升级说明](docs/mac-live-readonly-and-credentials.md) 验证备份，再获取并切换到 `codex/v14-live-automation`；保持原 Compose 项目与数据卷。在仓库根目录执行：
 
 ```sh
 docker compose -f infra/compose.yaml up --build -d
@@ -23,7 +25,7 @@ docker compose -f infra/compose.yaml logs --tail=80 init ops public-site worker 
 - 官网服务：<http://localhost:3001>；未发布的路径返回 404。在“内容与官网”中登记并发布批准路径后可以访问。
 - 数据库、后台任务和浏览器服务位于内部网络，没有宿主公开端口。
 
-镜像不强制 amd64，会按 Apple 芯片使用 ARM64。当前执行环境已验证 Linux 容器构建、各服务启动和 PostgreSQL 备份恢复；需要在你的 Mac 上实际运行后才能确认该机器验收。建议 Docker 至少 4 CPU、8 GB 内存、30 GB 可用空间。详见 [本地运行与部署说明](infra/README.md)。
+镜像不强制 amd64，会按 Apple 芯片使用 ARM64。Linux 容器构建、各服务启动和 PostgreSQL 备份恢复已验证；2026-10-04 Mac 现场任务另验证 ARM64 镜像、五个服务运行、页面/API HTTP 200 及 Chromium profile 2/2。该记录证明本地测试运行，真实平台与持续自动化仍分别待验收。建议 Docker 至少 4 CPU、8 GB 内存、30 GB 可用空间。详见 [本地运行与部署说明](infra/README.md)。
 
 停止而保留数据：
 
@@ -40,7 +42,7 @@ docker compose -f infra/compose.yaml down
 3. 在“内容与官网”保存多版正文、审核公开事实和许可，再登记 `/article/` 等批准路径。页面发布需要负责人启用的规则与不可变正文版本；本地结果明确标记模拟。
 4. “效果复盘”先显示数据缺口；预检报表并确认完整窗口后提交。测试样例标记为模拟历史导入，关键词明细不会重复计入计划花费。
 5. “共享线索”分别展示留资、真实线索、销售确认与会话。真实个人信息处理默认关闭，合成测试仅使用 `example.invalid` 邮箱。
-6. “连接与执行规则”保存连接、规则草稿与周期配置。未配置读取器、模型或真实回读能力时，后台记录缺口和人工待办。
+6. “连接与执行规则”保存来源范围、加密凭据、DeepSeek 路由和周期配置。真实读取需要按 [本地登录说明](docs/local-live-login.md) 启用独立成员登录；来源同步、模型核验和平台登录分别记录实际结果。未配置适配器或覆盖不完整时，后台记录缺口和人工待办。
 
 默认没有真实平台凭据、真实模型产物或真实广告预算。会话和能力未验收时不会显示已接通；提交回执、人工完成说明和模拟回读不代替真实成功。
 

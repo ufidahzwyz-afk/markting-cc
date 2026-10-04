@@ -29,3 +29,20 @@ export async function api<T>(path: string, options: { method?: string; body?: un
   }
   return value.data;
 }
+
+export type PrivateDraft = {
+  id: string; topicId: string; contentVersionId: string; version: number; title: string;
+  bodyBlocks: { type: 'paragraph'|'bullet'|'heading'; text: string }[]; claimRefs: { blockIndex: number; claimId: string }[];
+  cta?: {label:string;href:string;action:'navigate'|'scroll_to_form'|'contact'} | null; gaps: unknown[]; warnings: unknown[]; aiRunId: string | null;
+  sourceVersionIds: string[]; mode: string; origin: 'ai'|'manual'; parentVersionId: string|null; payloadHash: string; state: 'private_candidate';
+};
+export type AutomationStatus = {
+  mode: 'live'|'mock';
+  source_changes: Record<string, unknown>[]; insights: Record<string, unknown>[];
+  recommendations: Record<string, unknown>[]; ai_runs: Record<string, unknown>[];
+  drafts: PrivateDraft[]; model: Record<string, unknown>;
+};
+export const automationStatus = (mode?: 'live' | 'mock') => api<AutomationStatus>(`/automation/status${mode?`?mode=${mode}`:''}`);
+export const privateDraft = (id: string, mode?: 'live'|'mock') => api<PrivateDraft>(`/automation/drafts/${id}${mode?`?mode=${mode}`:''}`);
+export const editPrivateDraft = (draft: PrivateDraft, input: { title: string; body_blocks: PrivateDraft['bodyBlocks']; claim_refs: { block_index: number; claim_id: string }[]; cta?: PrivateDraft['cta'] }) => api<PrivateDraft>(`/automation/drafts/${draft.id}?mode=${draft.mode}`, { method: 'PATCH', version: draft.version, body: input });
+export const syncSource = (id: string) => api<{ run_id: string; status: string; source_kind: string; simulation: boolean }>(`/connections/${id}/sync`, { method: 'POST', body: { mode: 'incremental' } });

@@ -21,7 +21,8 @@
     "@boran/connectors": "0.1.0",
     "jose": "6.1.3",
     "@boran/worker": "0.1.0",
-    "@boran/browser-runtime": "0.1.0"
+    "@boran/browser-runtime": "0.1.0",
+    "@boran/ai": "0.1.0"
   },
   "devDependencies": {
     "@types/react": "19.3.0",

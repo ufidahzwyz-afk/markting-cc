@@ -553,7 +553,7 @@ export interface paths {
         put?: never;
         /**
          * 验证API或云端浏览器登录与实际能力
-         * @description 写入持久browser_command并返回run_id；命令校验fencing token和会话版本。可用API先验证，浏览器会话仅在云端profile中。登录/验证成功不代表发布已成功。
+         * @description 写入持久 browser_command 并返回 command_id；命令核验 fencing token 和会话版本。浏览器使用服务端受保护 profile，支持 Mac 本地运行；登录或身份验证成功不代表发布已成功。
          */
         post: operations["post_platform_accounts_id_session_verify"];
         delete?: never;
@@ -1572,6 +1572,215 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/platform-accounts/{id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 由真实身份回读证明启用账号；仍需能力与执行规则 */
+        post: operations["post_platform_accounts_id_enable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/login-sessions/{id}/challenge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 本人完成固定配方的验证码或二维码验证；验证码不持久化 */
+        post: operations["post_login_sessions_id_challenge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/login-sessions/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 读取实际账号身份并完成已绑定验证会话 */
+        post: operations["post_login_sessions_id_complete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform-accounts/{id}/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按固定服务端配方排队自动登录 */
+        post: operations["post_platform_accounts_id_login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/connections/{id}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 本地加密保存凭据，轮换撤销旧会话；DTO不返回凭据 */
+        post: operations["post_connections_id_credentials"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform-accounts/{id}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 本地加密保存凭据，轮换撤销旧会话；DTO不返回凭据 */
+        post: operations["post_platform_accounts_id_credentials"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/automation/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取组织模型配置与真实配置状态 */
+        get: operations["get_automation_model"];
+        /** 真实负责人保存官方 DeepSeek 路由与持久调用限额 */
+        put: operations["put_automation_model"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/automation/model/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 核验实际账号模型目录；不视为生成或业务验收 */
+        post: operations["post_automation_model_verify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/automation/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 组织内来源、洞察与私有候选稿读模型 */
+        get: operations["get_automation_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/automation/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 组织内来源、洞察与私有候选稿读模型 */
+        get: operations["get_automation_drafts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/automation/drafts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 组织内来源、洞察与私有候选稿读模型 */
+        get: operations["get_automation_drafts_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 保留来源与人工版本，追加私有候选稿版本 */
+        patch: operations["patch_automation_drafts_id"];
+        trace?: never;
+    };
+    "/platform-accounts/{id}/capabilities/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 负责人触发服务端实际能力验收；不接受客户端能力证明
+         * @description 写入持久 browser_command 并返回 command_id；命令核验 fencing token、账号与会话版本。浏览器使用服务端受保护 profile，支持 Mac 本地运行。仅接受服务端选择且有实际读回证据的能力产物；排队或登录成功不代表能力验证或发布成功。
+         */
+        post: operations["post_platform_accounts_id_capabilities_verify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1912,6 +2121,11 @@ export interface components {
                 [key: string]: unknown;
             };
             reason?: string;
+            /**
+             * @description 负责人或审核人明确核实事实并确认独立公开许可后，可将内部事实转为公开；AI不能授予。
+             * @enum {string}
+             */
+            visibility?: "internal" | "public";
         };
         /** @description 至少url或evidence_object_key一个；需owner或获授权operator确认 */
         ManualReceipt: {
@@ -2186,7 +2400,7 @@ export interface components {
                 /** @constant */
                 interaction_ready: false;
                 /** @constant */
-                status: "login_proxy_integration_required";
+                status: "challenge_verification_pending";
                 interaction_ticket: string | null;
                 interaction_url: null;
                 replay: boolean;
@@ -2578,7 +2792,14 @@ export interface components {
             access_status: "not_configured" | "verifying" | "connected" | "auth_required" | "unsupported" | "disabled";
             last_attempt_at: string | null;
             last_error_code: string | null;
+            /** @description 连接配置乐观锁版本；不包含明文凭据 */
             edit_version: string;
+            /** @description 仅表示已保存凭据，不代表实际登录或读取通过 */
+            has_credential_ref?: boolean;
+            /** @description 明确的来源范围或服务端适配器引用；不包含凭据载荷 */
+            scope_json?: {
+                [key: string]: unknown;
+            };
         };
         TopicReadItem: {
             data: components["schemas"]["TopicRead"];
@@ -3243,6 +3464,7 @@ export interface components {
             version: number;
             session_version: number | string;
             channel_id: string | null;
+            adapter_version?: string | null;
         };
         PlatformAccountsRead: {
             data: components["schemas"]["PlatformAccountRead"][];
@@ -4139,6 +4361,216 @@ export interface components {
                 key: "analytics_configuration";
                 value: components["schemas"]["AnalyticsConfiguration"];
                 schema_version: number;
+            };
+            meta: components["schemas"]["Meta"];
+        };
+        PlatformAccountEnabled: {
+            data: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                connection_id: string;
+                provider: string;
+                display_name: string;
+                enabled: boolean;
+                /** @enum {string} */
+                session_status: "not_connected" | "active" | "expired" | "challenge_required" | "revoked" | "unknown";
+                session_expires_at: string | null;
+                last_session_verified_at: string | null;
+                timezone: string;
+                version: number;
+                session_version: number | string;
+                channel_id: string | null;
+                /** @constant */
+                execution_policy_required?: true;
+                /** @constant */
+                platform_capabilities_required?: true;
+                adapter_version?: string | null;
+            };
+            meta: components["schemas"]["Meta"];
+        };
+        LoginChallengeCommand: {
+            /** @enum {string} */
+            action: "open" | "submit" | "verify" | "close";
+            code?: string;
+        };
+        LoginCompleteCommand: {
+            /** Format: uuid */
+            platform_account_id?: string;
+        };
+        LoginChallengeResult: {
+            data: {
+                interaction_ready?: boolean;
+                /** @enum {string} */
+                method?: "otp" | "qr";
+                /** Format: date-time */
+                expires_at?: string;
+                state?: string;
+                verified?: boolean;
+                session_version?: number;
+                /** Format: uuid */
+                id?: string;
+                status?: string;
+                qr_image?: string;
+            };
+            meta: components["schemas"]["Meta"];
+        };
+        PlatformLoginQueued: {
+            data: {
+                /** Format: uuid */
+                command_id: string;
+                state: string;
+                /** @constant */
+                verified: false;
+            };
+            meta: components["schemas"]["Meta"];
+        };
+        CredentialWrite: {
+            /** @constant */
+            kind: "api_key";
+            api_key: string;
+        } | {
+            /** @constant */
+            kind: "platform_password";
+            username: string;
+            password: string;
+            token?: string;
+        } | {
+            /** @constant */
+            kind: "drive_oauth";
+            client_id: string;
+            client_secret: string;
+            refresh_token: string;
+            access_token?: string;
+            /** Format: date-time */
+            expires_at?: string;
+        };
+        CredentialSaved: {
+            data: {
+                /** Format: uuid */
+                id: string;
+                provider: string;
+                display_name: string;
+                timezone: string;
+                currency: string;
+                /** @enum {string} */
+                health: "unknown" | "healthy" | "partial" | "stale" | "rate_limited" | "failed" | "disabled";
+                enabled_for_reporting: boolean;
+                authoritative_report_type: string | null;
+                last_success_at: string | null;
+                capabilities_verified_at: string | null;
+                source_kind: ("market_public" | "competitor_public" | "mac_drive" | "chatgpt" | "other") | null;
+                /** @enum {string} */
+                read_mode: "native_api" | "authorized_browser" | "drive_sync" | "manual_import" | "mock";
+                /** @enum {string} */
+                access_status: "not_configured" | "verifying" | "connected" | "auth_required" | "unsupported" | "disabled";
+                last_attempt_at: string | null;
+                last_error_code: string | null;
+                /** @description 连接配置乐观锁版本；不包含明文凭据 */
+                edit_version: string;
+                /** @description 仅表示已保存凭据，不代表实际登录或读取通过 */
+                has_credential_ref?: boolean;
+                /** @description 明确的来源范围或服务端适配器引用；不包含凭据载荷 */
+                scope_json?: {
+                    [key: string]: unknown;
+                };
+                /** @enum {string} */
+                credential_kind?: "api_key" | "platform_password" | "drive_oauth";
+                /** @constant */
+                credential_saved?: true;
+                /** @constant */
+                verified?: false;
+                login_command_ids?: string[];
+                /** @enum {string} */
+                login_status?: "queued" | "adapter_configuration_required" | "verification_required";
+            };
+            meta: components["schemas"]["Meta"];
+        };
+        ModelConfigurationWrite: {
+            connection_id: string | null;
+            base_url: string;
+            /** @enum {string} */
+            protocol: "chat_completions" | "messages";
+            insight_model: string;
+            content_model: string;
+            /** @enum {string} */
+            response_format: "json_object" | "json_schema" | "none";
+            max_calls_per_day: number;
+            max_calls_per_minute: number;
+            max_input_tokens: number;
+            max_output_tokens: number;
+        };
+        ModelConfigurationRead: {
+            data: {
+                schema_version: number;
+                configuration: components["schemas"]["ModelConfigurationWrite"];
+                readiness: {
+                    [key: string]: unknown;
+                };
+                verification: {
+                    models_verified: boolean;
+                    verified_at: string | null;
+                    missing_models: string[];
+                };
+            };
+            meta: components["schemas"]["Meta"];
+        };
+        ModelCatalogChecked: {
+            data: {
+                models_verified: boolean;
+                verified_at: string | null;
+                missing_models: string[];
+                /** @constant */
+                actual_generation_verified: false;
+                error_code?: string;
+            };
+            meta: components["schemas"]["Meta"];
+        };
+        PrivateDraftEdit: {
+            title: string;
+            body_blocks: {
+                /** @enum {string} */
+                type: "paragraph" | "bullet" | "heading";
+                text: string;
+            }[];
+            claim_refs: {
+                block_index: number;
+                /** Format: uuid */
+                claim_id: string;
+            }[];
+            cta?: {
+                label: string;
+                href: string;
+                /** @enum {string} */
+                action: "navigate" | "scroll_to_form" | "contact";
+            } | null;
+        };
+        AutomationStatusRead: {
+            data: {
+                [key: string]: unknown;
+            };
+            meta: components["schemas"]["Meta"];
+        };
+        PrivateDraftRead: {
+            data: {
+                [key: string]: unknown;
+            };
+            meta: components["schemas"]["Meta"];
+        };
+        PrivateDraftList: {
+            data: {
+                [key: string]: unknown;
+            }[];
+            meta: components["schemas"]["Meta"];
+        };
+        CapabilityVerificationQueued: {
+            data: {
+                /** Format: uuid */
+                command_id: string;
+                state: string;
+                /** @constant */
+                verified: false;
+                capability_status: string;
             };
             meta: components["schemas"]["Meta"];
         };
@@ -7882,6 +8314,510 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnalyticsConfigurationUpdated"];
+                };
+            };
+            /** @description 结构化错误 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post_platform_accounts_id_enable: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-CSRF-Token": string;
+                /** @description platform_accounts.version */
+                "If-Match": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmptyCommand"];
+            };
+        };
+        responses: {
+            /** @description 实际运行响应；配置、入队与实际业务验收分别记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformAccountEnabled"];
+                };
+            };
+            /** @description 结构化错误 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post_login_sessions_id_challenge: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginChallengeCommand"];
+            };
+        };
+        responses: {
+            /** @description 实际运行响应；配置、入队与实际业务验收分别记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginChallengeResult"];
+                };
+            };
+            /** @description 结构化错误 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post_login_sessions_id_complete: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginCompleteCommand"];
+            };
+        };
+        responses: {
+            /** @description 实际运行响应；配置、入队与实际业务验收分别记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginChallengeResult"];
+                };
+            };
+            /** @description 结构化错误 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post_platform_accounts_id_login: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmptyCommand"];
+            };
+        };
+        responses: {
+            /** @description 实际运行响应；配置、入队与实际业务验收分别记录 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformLoginQueued"];
+                };
+            };
+            /** @description 结构化错误 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post_connections_id_credentials: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-CSRF-Token": string;
+                /** @description 连接 edit_version SHA-256 */
+                "If-Match": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialWrite"];
+            };
+        };
+        responses: {
+            /** @description 实际运行响应；配置、入队与实际业务验收分别记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialSaved"];
+                };
+            };
+            /** @description 结构化错误 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post_platform_accounts_id_credentials: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-CSRF-Token": string;
+                /** @description 连接 edit_version SHA-256 */
+                "If-Match": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialWrite"];
+            };
+        };
+        responses: {
+            /** @description 实际运行响应；配置、入队与实际业务验收分别记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialSaved"];
+                };
+            };
+            /** @description 结构化错误 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get_automation_model: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 实际运行响应；配置、入队与实际业务验收分别记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelConfigurationRead"];
+                };
+            };
+            /** @description 结构化错误 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    put_automation_model: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-CSRF-Token": string;
+                /** @description 配置 schema_version，首次为0 */
+                "If-Match": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelConfigurationWrite"];
+            };
+        };
+        responses: {
+            /** @description 实际运行响应；配置、入队与实际业务验收分别记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelConfigurationRead"];
+                };
+            };
+            /** @description 结构化错误 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post_automation_model_verify: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmptyCommand"];
+            };
+        };
+        responses: {
+            /** @description 实际运行响应；配置、入队与实际业务验收分别记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelCatalogChecked"];
+                };
+            };
+            /** @description 结构化错误 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get_automation_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 实际运行响应；配置、入队与实际业务验收分别记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationStatusRead"];
+                };
+            };
+            /** @description 结构化错误 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get_automation_drafts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 实际运行响应；配置、入队与实际业务验收分别记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrivateDraftList"];
+                };
+            };
+            /** @description 结构化错误 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get_automation_drafts_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 实际运行响应；配置、入队与实际业务验收分别记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrivateDraftRead"];
+                };
+            };
+            /** @description 结构化错误 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patch_automation_drafts_id: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-CSRF-Token": string;
+                /** @description 当前私有草稿版本号 */
+                "If-Match": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrivateDraftEdit"];
+            };
+        };
+        responses: {
+            /** @description 实际运行响应；配置、入队与实际业务验收分别记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrivateDraftRead"];
+                };
+            };
+            /** @description 结构化错误 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post_platform_accounts_id_capabilities_verify: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmptyCommand"];
+            };
+        };
+        responses: {
+            /** @description 已持久化的实际响应；外部效果仍以读回核验为准 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CapabilityVerificationQueued"];
                 };
             };
             /** @description 结构化错误 */

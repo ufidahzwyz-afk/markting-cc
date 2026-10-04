@@ -4,6 +4,8 @@ import { requireActiveRole } from "@boran/domain/authz";
 import { sanitizePrivateText } from "@boran/domain/privacy";
 import { activatePolicy, createPolicy, createPolicyVersion, revokePolicy, createApproval, decideApproval, createExecutionAction, type PolicyInput, type ActionType } from "@boran/domain/execution";
 import { databaseCommand, expectedVersion, idempotencyKey, jsonData } from "../http";
+import { createBrowserService } from "@boran/browser-runtime/service";
+import { browserClientFromEnvironment } from "@boran/browser-runtime";
 
 type Json = Record<string, unknown>;
 function object(value:unknown):Json { return value && typeof value==="object" && !Array.isArray(value)?value as Json:{}; }
@@ -12,10 +14,25 @@ function definition(input:components["schemas"]["PolicyDefinition"],name:string)
     ...(input.daily_budget_minor!==null?{dailyBudgetMinor:input.daily_budget_minor}:{}),...(input.total_budget_minor!==null?{totalBudgetMinor:input.total_budget_minor}:{}),...(input.max_bid_change_pct!==null?{maxBidChangePct:input.max_bid_change_pct}:{}),...(input.valid_until!==null?{validUntil:input.valid_until}:{}) };
 }
 async function get(ctx:ServiceContext,table:string,id:string):Promise<Json>{const row=(await ctx.db.query(`SELECT * FROM ${table} WHERE org_id=$1 AND id=$2`,[ctx.orgId,id])).rows[0];if(!row)throw new DomainError("NOT_FOUND",404,"组织内记录不存在");return row;}
-async function beforeSnapshot(ctx:ServiceContext,target:Json):Promise<Json>{
+async function beforeSnapshot(ctx:ServiceContext,target:Json,key:string,actionType:ActionType):Promise<Json>{
   if(target.page_id){const page=await get(ctx,"pages",String(target.page_id));return{version:page.version,published_release_id:page.published_release_id};}
   if(ctx.mode==="mock")return{mode:"mock",target};
-  throw new DomainError("ADAPTER_READBACK_REQUIRED",503,"平台目标回读能力尚未接通");
+  await requireActiveRole(ctx,ctx.db,"owner","marketer");
+  const accountId=String(target.platform_account_id??target.account_id??''),account=await get(ctx,'platform_accounts',accountId);
+  const intent=stableHash({actor_id:ctx.actorId,key,target,account_id:accountId,session_version:account.session_version,adapter_version:account.adapter_version,read_generation:Math.floor(Date.parse(nowIso(ctx))/60_000)});
+  // Persist a read-only intent before networking; this phase deliberately runs outside databaseCommand.
+  await ctx.db.query("INSERT INTO settings(org_id,key,value,updated_by) VALUES($1,$2,$3,$4) ON CONFLICT(org_id,key) DO NOTHING",[ctx.orgId,`platform_read_intent:${intent}`,JSON.stringify({mode:'live',account_id:accountId,target,target_hash:stableHash(target),requested_by:ctx.actorId}),ctx.actorId]);
+  const service=createBrowserService(ctx,{adapters:new Map()});
+  const command=await service.enqueue({command_type:actionType.startsWith('ads.')?'ad_read':'session_verify',idempotency_key:`before:${ctx.actorId}:${intent}`,platform_account_id:accountId,session_version:Number(account.session_version),adapter_version:String(account.adapter_version??'unconfigured-v1'),input_ref:actionType.startsWith('ads.')?{read_intent_id:intent}:{}});
+  if(command.state==='queued'){
+    try{await browserClientFromEnvironment(process.env,'ops').execute(ctx.orgId,command.id);}catch(error){if(error instanceof DomainError&&!['BROWSER_SERVICE_UNAVAILABLE','command_not_queued','BROWSER_IDENTITY_NOT_CONFIGURED'].includes(error.code))throw error;}
+  }
+  const current=await service.get(command.id),result=object(current.result_ref),evidence=object(result.evidence),data=object(result.data);
+  if(current.state!=='succeeded')throw new DomainError(current.state==='blocked'?'BEFORE_SNAPSHOT_BLOCKED':'BEFORE_SNAPSHOT_PENDING',409,'平台前快照读取尚未完成，请查看真实读取任务后重试',{resource_id:command.id});
+  if(result.status!=='verified'||evidence.verified!==true||evidence.externalAccountId!==account.account_external_id||!Number.isFinite(Date.parse(String(evidence.capturedAt)))||Math.abs(Date.parse(nowIso(ctx))-Date.parse(String(evidence.capturedAt)))>60_000)throw new DomainError('BEFORE_SNAPSHOT_STALE',409,'平台前快照不属于当前账号或已经过期',{resource_id:command.id});
+  const state=actionType.startsWith('ads.')?object(data.effective_fields):{account_external_id:account.account_external_id,session_version:account.session_version};
+  if(actionType.startsWith('ads.')&&!Object.keys(state).length)throw new DomainError('BEFORE_SNAPSHOT_MISSING',409,'平台未回读实际目标字段',{resource_id:command.id});
+  return {...state,_readback:{browser_command_id:command.id,target_hash:stableHash(target),evidence,mode:'live'}};
 }
 function boundedString(value:unknown,field:string,max=200):string{if(typeof value!=="string"||!value.trim()||value.length>max)throw new DomainError("INVALID_REQUEST",422,`${field}字段无效`);return value;}
 function assertKnown(body:Json,fields:string[]):void{if(Object.keys(body).some((field)=>!fields.includes(field)))throw new DomainError("INVALID_REQUEST",400,"请求包含不支持的字段");}
@@ -72,14 +89,28 @@ export async function handleExecution(ctx:ServiceContext,request:Request,segment
   if(resource==="actions"){
     if(method==="GET"&&!id)return jsonData((await ctx.db.query("SELECT * FROM execution_actions WHERE org_id=$1 ORDER BY created_at DESC LIMIT 200",[ctx.orgId])).rows);
     if(method==="GET"&&id&&!operation)return jsonData({...await get(ctx,"execution_actions",id),attempts:(await ctx.db.query("SELECT * FROM action_attempts WHERE org_id=$1 AND action_id=$2 ORDER BY attempt_no",[ctx.orgId,id])).rows});
-    if(method==="POST"&&!id){const parsed=validateApiRequest("ActionCreate",body),key=idempotencyKey(request);return databaseCommand(ctx,request,body,202,async(tx)=>{
-      if("approval_id"in parsed){const approval=await get(tx,"approvals",parsed.approval_id);if(approval.payload_hash!==parsed.expected_payload_hash)throw new DomainError("PAYLOAD_CHANGED",409,"批准载荷摘要不匹配");return createExecutionAction(tx,{idempotencyKey:key,actionType:approval.action_type as ActionType,target:object(approval.target),payload:object(approval.payload),beforeSnapshot:await beforeSnapshot(tx,object(approval.target)),approvalId:parsed.approval_id,...(approval.version_id?{versionId:String(approval.version_id)}:{})});}
+    if(method==="POST"&&!id){const parsed=validateApiRequest("ActionCreate",body),key=idempotencyKey(request);
+      await requireActiveRole(ctx,ctx.db,'owner','marketer');
+      const approved='approval_id'in parsed?await get(ctx,'approvals',parsed.approval_id):null;
+      const frozenTarget=approved?object(approved.target):'target'in parsed?parsed.target:{};
+      const frozenType=(approved?approved.action_type:'action_type'in parsed?parsed.action_type:'') as ActionType;
+      const previous=(await ctx.db.query("SELECT before_snapshot FROM execution_actions WHERE org_id=$1 AND idempotency_key=$2",[ctx.orgId,key])).rows[0];
+      const snapshot=previous?object(previous.before_snapshot):await beforeSnapshot(ctx,frozenTarget,key,frozenType);
+      return databaseCommand(ctx,request,body,202,async(tx)=>{
+      if("approval_id"in parsed){const approval=await get(tx,"approvals",parsed.approval_id);if(approval.payload_hash!==parsed.expected_payload_hash||stableHash(approval.target)!==stableHash(frozenTarget)||approval.action_type!==frozenType)throw new DomainError("PAYLOAD_CHANGED",409,"批准载荷摘要或目标不匹配");return createExecutionAction(tx,{idempotencyKey:key,actionType:approval.action_type as ActionType,target:object(approval.target),payload:object(approval.payload),beforeSnapshot:snapshot,approvalId:parsed.approval_id,...(approval.version_id?{versionId:String(approval.version_id)}:{})});}
       let payload:Json;
       if(parsed.payload)payload=object(parsed.payload);else{if(!parsed.version_id)throw new DomainError("VERSION_REQUIRED",422,"正文动作需要内容版本");const content=await get(tx,"content_versions",parsed.version_id);payload=object(content.body_json);if(content.payload_hash!==stableHash(payload))throw new DomainError("PAYLOAD_CHANGED",409,"内容版本摘要不一致");}
       if(stableHash(payload)!==parsed.expected_payload_hash)throw new DomainError("PAYLOAD_CHANGED",409,"请求摘要与服务器载荷不一致");
-      return createExecutionAction(tx,{idempotencyKey:key,actionType:parsed.action_type,target:parsed.target,payload,beforeSnapshot:await beforeSnapshot(tx,parsed.target),policyVersionId:parsed.policy_version_id,...(parsed.version_id?{versionId:parsed.version_id}:{})});
+      return createExecutionAction(tx,{idempotencyKey:key,actionType:parsed.action_type,target:parsed.target,payload,beforeSnapshot:snapshot,policyVersionId:parsed.policy_version_id,...(parsed.version_id?{versionId:parsed.version_id}:{})});
     });}
-    if(method==="POST"&&id&&operation==="reconcile"){await get(ctx,"execution_actions",id);assertKnown(body,[]);throw new DomainError("READBACK_ADAPTER_REQUIRED",503,"对账需要服务器适配器实际回读；当前没有已接通的真实平台回读能力");}
+    if(method==="POST"&&id&&operation==="reconcile"){
+      await requireActiveRole(ctx,ctx.db,'owner','marketer');const action=await get(ctx,"execution_actions",id);assertKnown(body,[]);
+      if(!['unknown','submitted','verification_pending','waiting_review'].includes(String(action.state)))throw new DomainError('INVALID_STATE',409,'当前动作无需对账');
+      const original=(await ctx.db.query("SELECT id FROM browser_commands WHERE org_id=$1 AND execution_action_id=$2 AND command_type IN ('publish','ad_write') AND state='unknown' ORDER BY created_at DESC LIMIT 1",[ctx.orgId,id])).rows[0];
+      if(!original)throw new DomainError('RECONCILIATION_COMMAND_REQUIRED',409,'动作缺少可回读的原始执行命令');
+      const service=createBrowserService(ctx,{adapters:new Map()});const command=await service.reconcile(String(original.id));
+      return jsonData({action_id:id,command_id:command.id,state:command.state,verified:false,mode:ctx.mode},202);
+    }
     if(method==="POST"&&id&&operation==="manual-receipt"){const parsed=validateApiRequest("ManualReceipt",body) as {external_id?:string;executed_at:string;url?:string;evidence_object_key?:string;note?:string},version=expectedVersion(request);return databaseCommand(ctx,request,body,200,async(tx)=>{await requireActiveRole(tx,tx.db,"owner","marketer");const action=(await tx.db.query("SELECT * FROM execution_actions WHERE org_id=$1 AND id=$2 FOR UPDATE",[tx.orgId,id])).rows[0];if(!action)throw new DomainError("NOT_FOUND",404,"动作不存在");assertVersion(Number(action.version),version);if(["succeeded","executing"].includes(String(action.state)))throw new DomainError("INVALID_STATE",409,"动作已成功或仍在执行，请先核对状态");const updated=(await tx.db.query("UPDATE execution_actions SET state='externally_completed',manual_receipt=$1,external_id=COALESCE($2,external_id),fencing_token=fencing_token+1,version=version+1,lease_until=NULL,lease_owner=NULL WHERE org_id=$3 AND id=$4 RETURNING *",[JSON.stringify(parsed),parsed.external_id??null,tx.orgId,id])).rows[0]!;await audit(tx,tx.db,"execution.manual_receipt","execution_action",id,{real_integration_accepted:false});return updated;});}
   }
   if(resource==="runs"&&method==="GET"){

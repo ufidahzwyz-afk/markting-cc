@@ -1,8 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
+import { randomBytes } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
-import { createServiceIdentityVerifier } from "../src/auth";
+import { createLocalServiceIdentityVerifier, createServiceIdentityVerifier, issueLocalServiceToken } from "../src/auth";
 import { createBrowserServer } from "../src/server";
 import type { BrowserService } from "../src/service";
 
@@ -39,4 +43,31 @@ test("private command HTTP authenticates signature/audience/service identity and
     assert.equal(response.status, 503);
     assert.equal((await response.json() as { error: { code: string } }).error.code, "IDENTITY_NOT_CONFIGURED");
   } finally { await new Promise<void>((resolve) => blocked.close(() => resolve())); }
+});
+
+test("local service identity verifies audience, role, expiry and durable one-use nonce without impersonating an operator", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "boran-service-auth-test-")), keyFile = join(directory, "service.key");
+  const org = "00000000-0000-4000-8000-000000000001", audience = "http://browser-runtime:3003";
+  await writeFile(keyFile, randomBytes(32), { mode: 0o600 });
+  const options = { audience, keyFile, services: { "boran-worker": { orgIds: [org], roles: ["worker"] } }, allowedRoles: ["worker"], replayDirectory: join(directory, "nonces") };
+  const verifier = createLocalServiceIdentityVerifier(options);
+  const token = (overrides: Partial<Parameters<typeof issueLocalServiceToken>[0]> = {}) => issueLocalServiceToken({ audience, keyFile, subject: "boran-worker", role: "worker", ...overrides });
+  try {
+    await assert.rejects(verifier(await token({ audience: "wrong-audience" })), { code: "INVALID_SERVICE_IDENTITY" });
+    await assert.rejects(verifier(await token({ role: "owner" })), { code: "INVALID_SERVICE_IDENTITY" });
+    await assert.rejects(verifier(await token({ subject: "unlisted-service" })), { code: "INVALID_SERVICE_IDENTITY" });
+    await assert.rejects(verifier(await token({ now: () => new Date(Date.now() - 180_000) })), { code: "INVALID_SERVICE_IDENTITY" });
+    const valid = await token();
+    assert.deepEqual(await verifier(valid), { subject: "boran-worker", email: "boran-worker@boran.local", orgIds: [org] });
+    await assert.rejects(verifier(valid), { code: "INVALID_SERVICE_IDENTITY" });
+    await assert.rejects(createLocalServiceIdentityVerifier(options)(valid), { code: "INVALID_SERVICE_IDENTITY" });
+    const concurrent = await token();
+    const attempts = await Promise.allSettled([verifier(concurrent), createLocalServiceIdentityVerifier(options)(concurrent)]);
+    assert.equal(attempts.filter(attempt => attempt.status === "fulfilled").length, 1);
+    assert.equal(attempts.filter(attempt => attempt.status === "rejected").length, 1);
+    await assert.rejects(issueLocalServiceToken({ audience, keyFile, subject: "boran-worker", role: "worker", ttlSeconds: 121 }), { code: "IDENTITY_NOT_CONFIGURED" });
+    await rm(keyFile);
+    await assert.rejects(token({ keyFile: join(directory, "unavailable.key") }), { code: "IDENTITY_NOT_CONFIGURED" });
+    await assert.rejects(verifier("no-key-available"), { code: "IDENTITY_NOT_CONFIGURED" });
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });

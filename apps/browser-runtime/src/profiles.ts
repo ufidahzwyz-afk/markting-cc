@@ -1,4 +1,4 @@
-import { mkdir, open, unlink, type FileHandle } from "node:fs/promises";
+import { mkdir, open, readFile, writeFile, unlink, type FileHandle } from "node:fs/promises";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { chromium, type BrowserContext } from "playwright";
@@ -9,13 +9,16 @@ export interface ProfileLease { context: BrowserContext; profileRef: string; clo
 export class BrowserProfilePool {
   private readonly bootId = randomUUID();
   private readonly active = new Map<string, ProfileLease>();
-  constructor(private readonly options: { root: string; encryptedVolumeConfirmed: boolean; executablePath?: string; mode: "mock" | "live" }) {}
+  constructor(private readonly options: { root: string; encryptedVolumeConfirmed: boolean; executablePath?: string; mode: "mock" | "live"; proxyServer?: string; additionalOriginsByChannel?: Readonly<Record<string, readonly string[]>> }) {}
   private validateId(id: string) { if (!/^[0-9a-f-]{36}$/i.test(id)) throw new ConnectorBlockedError("invalid_profile_identity"); }
-  async acquire(input: { orgId: string; accountId: string; fencingToken: number; channelId: string }): Promise<ProfileLease> {
+  async acquire(input: { orgId: string; accountId: string; fencingToken: number; channelId: string; allowedOrigins?: readonly string[] }): Promise<ProfileLease> {
     this.validateId(input.orgId); this.validateId(input.accountId);
     if (this.options.mode === "live" && !this.options.encryptedVolumeConfirmed) throw new ConnectorBlockedError("encrypted_profile_not_configured");
     if (!Number.isSafeInteger(input.fencingToken) || input.fencingToken < 1) throw new ConnectorBlockedError("invalid_profile_fencing");
-    const origins = getPlatformDescriptor(input.channelId).allowedOrigins;
+    const configured = this.options.additionalOriginsByChannel?.[input.channelId];
+    const approvedOrigins = configured ?? getPlatformDescriptor(input.channelId).allowedOrigins;
+    const origins = input.allowedOrigins ?? approvedOrigins;
+    if (!origins.length || origins.some(origin => !approvedOrigins.includes(origin) || new URL(origin).protocol !== "https:" || new URL(origin).origin !== origin)) throw new ConnectorBlockedError("invalid_profile_scope");
     const key = `${input.orgId}/${input.accountId}`;
     const root = resolve(this.options.root);
     await mkdir(resolve(root, "locks"), { recursive: true, mode: 0o700 });
@@ -35,7 +38,12 @@ export class BrowserProfilePool {
       await accountLock.writeFile(metadata); await slot.writeFile(metadata);
       const profile = resolve(root, input.orgId, input.accountId);
       await mkdir(profile, { recursive: true, mode: 0o700 });
-      context = await chromium.launchPersistentContext(profile, { headless: true, ...(this.options.executablePath ? { executablePath: this.options.executablePath } : {}), args: ["--disable-dev-shm-usage"], serviceWorkers: "block", acceptDownloads: false });
+      const bindingFile = resolve(profile, "boran-binding.json");
+      let binding: { orgId: string; accountId: string; channelId: string; fencingToken: number } | undefined;
+      try { binding = JSON.parse(await readFile(bindingFile, "utf8")) as typeof binding; } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new ConnectorBlockedError("profile_binding_invalid"); }
+      if (binding && (binding.orgId !== input.orgId || binding.accountId !== input.accountId || binding.channelId !== input.channelId || binding.fencingToken >= input.fencingToken)) throw new ConnectorBlockedError("profile_binding_or_fence_mismatch");
+      await writeFile(bindingFile, JSON.stringify({ orgId: input.orgId, accountId: input.accountId, channelId: input.channelId, fencingToken: input.fencingToken }), { mode: 0o600 });
+      context = await chromium.launchPersistentContext(profile, { headless: true, ...(this.options.executablePath ? { executablePath: this.options.executablePath } : {}), ...(this.options.proxyServer ? { proxy: { server: this.options.proxyServer } } : {}), args: ["--disable-dev-shm-usage", "--disable-save-password-bubble"], serviceWorkers: "block", acceptDownloads: false });
       await context.route("**/*", async (route) => {
         const url = new URL(route.request().url());
         // The first adapter POC must explicitly enumerate any additional resource/auth origins it needs.

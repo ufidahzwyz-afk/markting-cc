@@ -25,7 +25,7 @@ export interface PageInput {
 type Row = Record<string, unknown>;
 export type PageRecord = Row & { id: string; host: string; path: string; owner_system: string; content_item_id: string; published_release_id: string | null; version: number; seo_title: string; description: string; canonical_url: string; index_policy: string; template_key: string };
 export type VersionRecord = Row & { id: string; content_item_id: string; version_no: number; body_json: { title: string; modules: PageModules }; claim_ids: string[]; payload_hash: string; review_status: string };
-export type ReleaseRecord = Row & { id: string; page_id: string; content_version_id: string; action_id: string; seo_snapshot: { title: string; description: string; canonical: string; index_policy: string; payload_hash: string }; previous_release_id: string | null; rollback_of_id: string | null; published_at: string };
+export type ReleaseRecord = Row & { id: string; page_id: string; content_version_id: string; action_id: string; seo_snapshot: { title: string; description: string; canonical: string; index_policy: string; payload_hash: string; mode?: string }; previous_release_id: string | null; rollback_of_id: string | null; published_at: string };
 export type PublishedPage = { page: PageRecord; release: ReleaseRecord; content: VersionRecord; modules: PageModules; media: { id: string; mimeType: string; contentHash: string }[] };
 
 async function requireContentAccess(ctx: ServiceContext, ...roles: string[]) {
@@ -89,6 +89,14 @@ async function one<T extends Row>(tx: SqlExecutor, sql: string, params: unknown[
   const result = await tx.query<T>(sql, params); const row = result.rows[0];
   if (!row) throw new DomainError("NOT_FOUND", 404, `${label}不存在或无权访问`); return row;
 }
+function assertContentMode(ctx:ServiceContext,row:Row) {
+  if(row.execution_mode&&row.execution_mode!==ctx.mode)throw new DomainError('CONTENT_MODE_MISMATCH',409,'模拟内容和真实内容须使用各自的运行模式，历史版本不自动转换');
+}
+async function assertVersionMode(ctx:ServiceContext,tx:SqlExecutor,version:VersionRecord) {
+  const item=await one<Row>(tx,'SELECT id,execution_mode FROM content_items WHERE org_id=$1 AND id=$2',[ctx.orgId,version.content_item_id],'内容');
+  assertContentMode(ctx,item);
+  if(ctx.mode==='live'&&!item.execution_mode)throw new DomainError('CONTENT_MODE_UNVERIFIED',409,'历史内容未建立真实来源及运行模式；请保留历史并创建经过核验的真实版本');
+}
 async function validateClaims(ctx: ServiceContext, tx: SqlExecutor, ids: string[], modules?: PageModules) {
   if (ids.length > 100 || new Set(ids).size !== ids.length) throw new DomainError("INVALID_CLAIMS", 422, "事实引用重复或超出数量限制");
   ids.forEach(validId);
@@ -96,6 +104,11 @@ async function validateClaims(ctx: ServiceContext, tx: SqlExecutor, ids: string[
   const now = Date.parse(nowIso(ctx));
   if (result.rows.length !== ids.length) throw new DomainError("CLAIM_NOT_FOUND", 422, "事实不存在或不属于当前组织");
   for (const claim of result.rows) {
+    if(claim.execution_mode&&claim.execution_mode!==ctx.mode)throw new DomainError('CLAIM_MODE_MISMATCH',409,'模拟主张不能用于真实公开内容');
+    if(ctx.mode==='live'){
+      const source=await one<Row>(tx,'SELECT v.execution_mode,d.deleted_at,c.read_mode,c.access_status FROM source_versions v JOIN source_documents d ON d.org_id=v.org_id AND d.id=v.document_id LEFT JOIN connections c ON c.org_id=d.org_id AND c.id=d.connection_id WHERE v.org_id=$1 AND v.id=$2',[ctx.orgId,claim.source_version_id],'来源版本');
+      if(source.execution_mode!=='live'||source.deleted_at||source.read_mode==='mock'||source.access_status==='disabled')throw new DomainError('CLAIM_SOURCE_MODE_UNVERIFIED',409,'旧模拟或未核验来源不能自动转换为真实公开依据');
+    }
     if (claim.verification_status !== "verified" || claim.assertion_type !== "fact" || claim.visibility !== "public" || claim.public_permission !== "allowed" || !claim.permission_evidence_ref || (claim.valid_until && Date.parse(String(claim.valid_until)) <= now)) throw new DomainError("CLAIM_NOT_PUBLIC", 422, "事实尚未核实、许可缺失、已撤销或已过期", { claim_id: claim.id });
   }
   if (modules) {
@@ -139,10 +152,10 @@ export async function createContentItem(ctx: ServiceContext, input: ContentItemI
   if (!contentKinds.has(input.kind) || !["yonyou", "seeyon", "shared"].includes(input.business_line)) throw new DomainError("INVALID_CONTENT", 422, "内容类型或业务线无效");
   return ctx.db.transaction(async (tx) => {
     await requireActiveRole(ctx, tx, "owner", "marketer");
-    if (input.topic_id) { validId(input.topic_id); await one(tx, "SELECT id FROM topics WHERE org_id=$1 AND id=$2", [ctx.orgId, input.topic_id], "主题"); }
+    if (input.topic_id) { validId(input.topic_id); assertContentMode(ctx,await one(tx, "SELECT id,execution_mode FROM topics WHERE org_id=$1 AND id=$2", [ctx.orgId, input.topic_id], "主题")); }
     if (input.task_id) { validId(input.task_id); await one(tx, "SELECT id FROM tasks WHERE org_id=$1 AND id=$2", [ctx.orgId, input.task_id], "任务"); }
     const id = uuid();
-    await tx.query("INSERT INTO content_items (id,org_id,kind,business_line,owner_user_id,title,topic_id,task_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)", [id, ctx.orgId, input.kind, input.business_line, ctx.actorId, input.title, input.topic_id ?? null, input.task_id ?? null]);
+    await tx.query("INSERT INTO content_items (id,org_id,kind,business_line,owner_user_id,title,topic_id,task_id,execution_mode) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)", [id, ctx.orgId, input.kind, input.business_line, ctx.actorId, input.title, input.topic_id ?? null, input.task_id ?? null,ctx.mode]);
     await audit(ctx, tx, "content.created", "content_item", id); return { id, version: 0 };
   });
 }
@@ -150,7 +163,7 @@ export async function createContentVersion(ctx: ServiceContext, itemId: string, 
   await requireContentAccess(ctx, "owner", "admin", "marketer"); validId(itemId); safeText(input.title, 300); const modules = moduleValidation(input.modules);
   return ctx.db.transaction(async (tx) => {
     await requireActiveRole(ctx, tx, "owner", "marketer");
-    await one(tx, "SELECT id FROM content_items WHERE org_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE", [ctx.orgId, itemId], "内容");
+    assertContentMode(ctx,await one(tx, "SELECT id,execution_mode FROM content_items WHERE org_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE", [ctx.orgId, itemId], "内容"));
     const current = await tx.query<Row>("SELECT COALESCE(MAX(version_no),0)::integer AS version FROM content_versions WHERE org_id=$1 AND content_item_id=$2", [ctx.orgId, itemId]);
     assertVersion(Number(current.rows[0]?.version), expectedVersion); await validateClaims(ctx, tx, input.claim_ids, modules);
     const id = uuid(); const version = expectedVersion + 1; const body = { title: input.title, modules }; const payloadHash = stableHash(body);
@@ -164,6 +177,7 @@ export async function reviewContentVersion(ctx: ServiceContext, versionId: strin
   return ctx.db.transaction(async (tx) => {
     await requireActiveRole(ctx, tx, "owner", "marketer");
     const version = await one<VersionRecord>(tx, "SELECT * FROM content_versions WHERE org_id=$1 AND id=$2 FOR UPDATE", [ctx.orgId, versionId], "版本");
+    await assertVersionMode(ctx,tx,version);
     if (input.review_status === "approved") {
       if (stableHash(version.body_json) !== version.payload_hash) throw new DomainError("CONTENT_VERSION_MISMATCH", 409, "内容版本与保存的摘要不一致");
       if (version.body_json.modules !== undefined) await validateClaims(ctx, tx, version.claim_ids, moduleValidation(version.body_json.modules));
@@ -184,7 +198,7 @@ export async function createPage(ctx: ServiceContext, input: PageInput, policy: 
   if (!["service", "industry", "case", "article"].includes(input.template_key) || !["index", "noindex"].includes(input.index_policy)) throw new DomainError("INVALID_PAGE", 422, "模板或索引策略无效");
   return ctx.db.transaction(async (tx) => {
     await requireActiveRole(ctx, tx, "owner", "marketer");
-    await one(tx, "SELECT id FROM content_items WHERE org_id=$1 AND id=$2 AND deleted_at IS NULL", [ctx.orgId, input.content_item_id], "内容");
+    assertContentMode(ctx,await one(tx, "SELECT id,execution_mode FROM content_items WHERE org_id=$1 AND id=$2 AND deleted_at IS NULL", [ctx.orgId, input.content_item_id], "内容"));
     const collision = await tx.query("SELECT id FROM pages WHERE org_id=$1 AND host=$2 AND path=$3", [ctx.orgId, origin.host, path]);
     if (collision.rows.length) throw new DomainError("PAGE_PATH_CONFLICT", 409, "此路径已被现有网站或新页面占用");
     const id = uuid();
@@ -195,12 +209,15 @@ export async function createPage(ctx: ServiceContext, input: PageInput, policy: 
 export async function getPagePreview(ctx: ServiceContext, pageId: string) {
   await requireContentAccess(ctx, "owner", "admin", "marketer", "reviewer"); validId(pageId);
   const page = await one<PageRecord>(ctx.db, "SELECT * FROM pages WHERE org_id=$1 AND id=$2", [ctx.orgId, pageId], "页面");
+  const item=await one<Row>(ctx.db,'SELECT execution_mode FROM content_items WHERE org_id=$1 AND id=$2',[ctx.orgId,page.content_item_id],'内容');
+  if(ctx.mode==='mock'&&item.execution_mode==='live')throw new DomainError('NOT_FOUND',404,'页面不存在或无权访问');
   const content = await one<VersionRecord>(ctx.db, "SELECT * FROM content_versions WHERE org_id=$1 AND content_item_id=$2 ORDER BY version_no DESC LIMIT 1", [ctx.orgId, page.content_item_id], "正文版本");
-  return { page, content, modules: moduleValidation(content.body_json.modules), preview: true, robots: "noindex, nofollow", data_mode: ctx.mode };
+  return { page, content, modules: moduleValidation(content.body_json.modules), preview: true, robots: "noindex, nofollow", data_mode: item.execution_mode??'mock' };
 }
 
 export interface PublishPageInput { pageId: string; contentVersionId: string; actionId: string; expectedVersion: number; verifyObject?: AssetVerifier }
 async function publicationChecks(ctx: ServiceContext, tx: SqlExecutor, page: PageRecord, version: VersionRecord, policy: SitePolicy, verifyObject?: AssetVerifier) {
+  await assertVersionMode(ctx,tx,version);
   const origin = originFor(policy);
   if (ctx.mode === "live" && origin.protocol !== "https:") throw new DomainError("HTTPS_REQUIRED", 422, "生产网站必须配置 HTTPS");
   if (ctx.mode === "mock" && origin.protocol === "http:" && !["localhost", "127.0.0.1", "[::1]"].includes(origin.hostname)) throw new DomainError("MOCK_SITE_LOCAL_ONLY", 403, "模拟网站仅允许本地 HTTP 主机");
@@ -221,7 +238,7 @@ async function publicationChecks(ctx: ServiceContext, tx: SqlExecutor, page: Pag
 }
 async function commitRelease(ctx: ServiceContext, tx: SqlExecutor, page: PageRecord, version: VersionRecord, actionId: string, rollbackOf: string | null) {
   const id = uuid(); const time = nowIso(ctx);
-  const seo = { title: page.seo_title, description: page.description, canonical: page.canonical_url, index_policy: page.index_policy, payload_hash: version.payload_hash };
+  const seo = { title: page.seo_title, description: page.description, canonical: page.canonical_url, index_policy: page.index_policy, payload_hash: version.payload_hash, mode: ctx.mode };
   await tx.query("INSERT INTO releases (id,org_id,page_id,content_version_id,action_id,published_at,previous_release_id,rollback_of_id,seo_snapshot,route_config_version) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)", [id, ctx.orgId, page.id, version.id, actionId, time, page.published_release_id, rollbackOf, JSON.stringify(seo), stableHash({ host: page.host, path: page.path, owner_system: page.owner_system })]);
   await tx.query("UPDATE pages SET published_release_id=$3,version=version+1,updated_at=$4 WHERE org_id=$1 AND id=$2", [ctx.orgId, page.id, id, time]);
   await tx.query("UPDATE execution_actions SET state='verification_pending',after_snapshot=$3,external_id=$4,version=version+1,updated_at=$5 WHERE org_id=$1 AND id=$2", [ctx.orgId, actionId, JSON.stringify({ release_id: id, content_version_id: version.id, path: page.path, mode: ctx.mode }), id, time]);
@@ -243,6 +260,7 @@ export async function publishPage(ctx: ServiceContext, input: PublishPageInput, 
     await requireActiveRole(ctx, tx, "owner", "marketer");
     const page = await one<PageRecord>(tx, "SELECT * FROM pages WHERE org_id=$1 AND id=$2 FOR UPDATE", [ctx.orgId, input.pageId], "页面");
     const content = await one<VersionRecord>(tx, "SELECT * FROM content_versions WHERE org_id=$1 AND id=$2", [ctx.orgId, input.contentVersionId], "正文版本");
+    await assertVersionMode(ctx,tx,content);
     const existing = (await tx.query<Row>("SELECT r.*,a.state AS action_state FROM releases r JOIN execution_actions a ON a.org_id=r.org_id AND a.id=r.action_id WHERE r.org_id=$1 AND r.action_id=$2", [ctx.orgId, input.actionId])).rows[0];
     if (existing) {
       if (existing.page_id !== page.id || existing.content_version_id !== content.id || existing.rollback_of_id) throw new DomainError("ACTION_BINDING_MISMATCH", 403, "既有发布动作与本次请求不一致");
@@ -261,6 +279,7 @@ export async function rollbackPage(ctx: ServiceContext, input: { pageId: string;
     const existing = (await tx.query<Row>("SELECT r.*,a.state AS action_state FROM releases r JOIN execution_actions a ON a.org_id=r.org_id AND a.id=r.action_id WHERE r.org_id=$1 AND r.action_id=$2", [ctx.orgId, input.actionId])).rows[0];
     if (existing) {
       if (existing.page_id !== page.id || existing.rollback_of_id !== input.releaseId) throw new DomainError("ACTION_BINDING_MISMATCH", 403, "既有回滚动作与本次请求不一致");
+      await assertVersionMode(ctx,tx,await one<VersionRecord>(tx,'SELECT * FROM content_versions WHERE org_id=$1 AND id=$2',[ctx.orgId,existing.content_version_id],'历史回滚正文'));
       return { release_id: String(existing.id), page_id: page.id, version: page.version, state: String(existing.action_state), mode: ctx.mode };
     }
     assertVersion(page.version, input.expectedVersion);
@@ -271,11 +290,17 @@ export async function rollbackPage(ctx: ServiceContext, input: { pageId: string;
     return commitRelease(ctx, tx, snapshotPage, content, input.actionId, previous.id);
   });
 }
-export async function readPublishedPage(db: SqlExecutor, orgId: string, host: string, path: string): Promise<PublishedPage | null> {
+export async function readPublishedPage(db: SqlExecutor, orgId: string, host: string, path: string, expectedMode?: 'mock'|'live'): Promise<PublishedPage | null> {
   const pages = await db.query<PageRecord>("SELECT * FROM pages WHERE org_id=$1 AND host=$2 AND path=$3 AND owner_system='marketing' AND published_release_id IS NOT NULL", [orgId, host, path]);
   const page = pages.rows[0]; if (!page) return null;
   const release = await one<ReleaseRecord>(db, "SELECT * FROM releases WHERE org_id=$1 AND id=$2 AND page_id=$3", [orgId, page.published_release_id, page.id], "发布版本");
   const content = await one<VersionRecord>(db, "SELECT * FROM content_versions WHERE org_id=$1 AND id=$2 AND content_item_id=$3", [orgId, release.content_version_id, page.content_item_id], "发布正文");
+  if(expectedMode){
+    const item=await one<Row>(db,'SELECT execution_mode FROM content_items WHERE org_id=$1 AND id=$2',[orgId,content.content_item_id],'内容');
+    const action=await one<Row>(db,'SELECT after_snapshot FROM execution_actions WHERE org_id=$1 AND id=$2',[orgId,release.action_id],'发布动作');
+    const actionMode=(action.after_snapshot as Row|null)?.mode;
+    if(item.execution_mode&&item.execution_mode!==expectedMode || actionMode!==expectedMode || release.seo_snapshot.mode&&release.seo_snapshot.mode!==expectedMode || expectedMode==='live'&&(item.execution_mode!=='live'||release.seo_snapshot.mode!=='live')) return null;
+  }
   if (stableHash(content.body_json) !== content.payload_hash || release.seo_snapshot.payload_hash !== content.payload_hash) throw new DomainError("RELEASE_INTEGRITY_FAILED", 503, "发布快照完整性检查失败");
   const modules = moduleValidation(content.body_json.modules); const ids = references(modules).assets;
   const mediaRows = ids.length ? (await db.query<Row>("SELECT id,mime_type,content_hash FROM media_assets WHERE org_id=$1 AND id=ANY($2::uuid[]) AND state='ready' AND public_permission='allowed' AND license_evidence_ref IS NOT NULL", [orgId, ids])).rows : [];
@@ -322,19 +347,27 @@ export async function verifyPageRelease(ctx: ServiceContext, releaseId: string, 
   await requireContentAccess(ctx, "owner", "admin", "marketer"); validId(releaseId);
   const release = await one<ReleaseRecord>(ctx.db, "SELECT * FROM releases WHERE org_id=$1 AND id=$2", [ctx.orgId, releaseId], "发布版本");
   const page = await one<PageRecord>(ctx.db, "SELECT * FROM pages WHERE org_id=$1 AND id=$2", [ctx.orgId, release.page_id], "页面");
+  const published = await one<VersionRecord>(ctx.db, "SELECT * FROM content_versions WHERE org_id=$1 AND id=$2", [ctx.orgId, release.content_version_id], "发布正文");
+  const provenance = async(tx:SqlExecutor,lock=false)=>{
+    await assertVersionMode(ctx,tx,published);
+    const action=await one<Row>(tx,`SELECT * FROM execution_actions WHERE org_id=$1 AND id=$2${lock?' FOR UPDATE':''}`,[ctx.orgId,release.action_id],'发布动作');
+    const snapshot=action.after_snapshot as Row|null;
+    if(action.action_type!=='content.publish'||action.version_id!==published.id||action.payload_hash!==published.payload_hash||snapshot?.release_id!==release.id||snapshot.mode!==ctx.mode||release.seo_snapshot.mode&&release.seo_snapshot.mode!==ctx.mode||ctx.mode==='live'&&release.seo_snapshot.mode!=='live')throw new DomainError('RELEASE_MODE_MISMATCH',409,'发布版本与原执行动作的运行模式或不可变载荷不一致');
+  };
+  await provenance(ctx.db);
   if (page.published_release_id !== release.id) throw new DomainError("RELEASE_SUPERSEDED", 409, "此发布版本已不是当前页面版本");
   const url = assertSameSiteUrl(release.seo_snapshot.canonical, policy, assertSitePath(page.path, policy));
   const response = await fetchPage(url, { redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(10000), headers: { "X-Boran-Readback": release.id } });
   if (response.status !== 200 || !response.headers.get("content-type")?.includes("text/html")) throw new DomainError("PAGE_READBACK_FAILED", 503, "实际页面 HTTP 或正文类型核验失败");
   const html = await response.text();
   if (html.length > 2_000_000 || !html.includes(`data-release-id="${release.id}"`) || !html.includes(`data-content-hash="${release.seo_snapshot.payload_hash}"`) || !html.includes('<h1')) throw new DomainError("PAGE_READBACK_MISMATCH", 503, "实际页面与当前发布版本不一致");
-  const published = await one<VersionRecord>(ctx.db, "SELECT * FROM content_versions WHERE org_id=$1 AND id=$2", [ctx.orgId, release.content_version_id], "发布正文");
   assertReadbackContent(html, moduleValidation(published.body_json.modules), release.id, published.payload_hash);
   if (ctx.mode === "live" && html.includes('data-mode="mock"')) throw new DomainError("MOCK_READBACK_REJECTED", 503, "模拟页面不能用作真实发布核验证据");
   const evidence = { kind: "website_http_readback", mode: ctx.mode, url, http_status: response.status, response_hash: createHash("sha256").update(html).digest("hex"), release_id: release.id, verified_at: nowIso(ctx) };
   return ctx.db.transaction(async (tx) => {
     await requireActiveRole(ctx, tx, "owner", "marketer");
     const current = await one<PageRecord>(tx, "SELECT * FROM pages WHERE org_id=$1 AND id=$2 FOR UPDATE", [ctx.orgId, page.id], "页面");
+    await provenance(tx,true);
     if (current.published_release_id !== release.id) throw new DomainError("RELEASE_SUPERSEDED", 409, "读回期间页面版本发生变化");
     const state = ctx.mode === "live" ? "succeeded" : "verification_pending";
     const updated = await tx.query("UPDATE execution_actions SET state=$5,verified_at=$3,verification_evidence_ref=$4,version=version+1,updated_at=$6 WHERE org_id=$1 AND id=$2 AND state='verification_pending'", [ctx.orgId, release.action_id, ctx.mode === "live" ? evidence.verified_at : null, JSON.stringify(evidence), state, evidence.verified_at]);
@@ -354,7 +387,8 @@ export async function createPlatformVariant(ctx: ServiceContext, input: Platform
   return ctx.db.transaction(async (tx) => {
     await requireActiveRole(ctx, tx, "owner", "marketer");
     const mother = await one<VersionRecord>(tx, "SELECT * FROM content_versions WHERE org_id=$1 AND id=$2", [ctx.orgId, input.mother_content_version_id], "母稿");
-    await one(tx, "SELECT id FROM content_items WHERE org_id=$1 AND id=$2 AND topic_id IS NOT NULL FOR UPDATE", [ctx.orgId, input.content_item_id], "平台内容");
+    await assertVersionMode(ctx,tx,mother);
+    assertContentMode(ctx,await one(tx, "SELECT id,execution_mode FROM content_items WHERE org_id=$1 AND id=$2 AND topic_id IS NOT NULL FOR UPDATE", [ctx.orgId, input.content_item_id], "平台内容"));
     const profile = await one<Row>(tx, "SELECT v.*,p.platform_account_id FROM platform_profile_versions v JOIN platform_profiles p ON p.org_id=v.org_id AND p.id=v.profile_id WHERE v.org_id=$1 AND v.id=$2", [ctx.orgId, input.platform_profile_version_id], "平台档案");
     if (profile.platform_account_id !== input.platform_account_id || !(profile.allowed_formats as string[]).includes(input.format) || !profile.calibrated_at || !(profile.style_samples as unknown[]).length || !(profile.rules_source_urls as string[]).length) throw new DomainError("PLATFORM_PROFILE_NOT_READY", 422, "目标账号、风格样稿或平台规则未完成校准");
     const rules = profile.rules_json as Record<string, unknown>; const needs = profile.asset_requirements as Record<string, unknown>;
@@ -463,6 +497,7 @@ export async function createPublishJob(ctx: ServiceContext, input: { content_var
   return ctx.db.transaction(async (tx) => {
     await requireActiveRole(ctx, tx, "owner", "marketer");
     const variant = await one<Row>(tx, "SELECT v.*,c.body_json,c.claim_ids,c.payload_hash,i.business_line,i.topic_id,p.rules_json,p.asset_requirements FROM content_variants v JOIN content_versions c ON c.org_id=v.org_id AND c.id=v.content_version_id JOIN content_items i ON i.org_id=c.org_id AND i.id=c.content_item_id JOIN platform_profile_versions p ON p.org_id=v.org_id AND p.id=v.platform_profile_version_id WHERE v.org_id=$1 AND v.id=$2 FOR UPDATE OF v", [ctx.orgId, input.content_variant_id], "平台素材");
+    await assertVersionMode(ctx,tx,await one<VersionRecord>(tx,'SELECT * FROM content_versions WHERE org_id=$1 AND id=$2',[ctx.orgId,variant.content_version_id],'平台正文'));
     if (variant.platform_account_id !== input.platform_account_id || variant.validation_status !== "passed" || variant.validated_payload_hash !== variant.payload_hash || !variant.validated_at) throw new DomainError("VARIANT_NOT_READY", 422, "平台素材尚未通过校验或与目标账号不一致");
     await validateClaims(ctx, tx, variant.claim_ids as string[]);
     const needs = (variant.asset_requirements as Row).required_kinds; await validateAssets(ctx, tx, variant.asset_ids as string[], verifyObject, Array.isArray(needs) ? needs.map(String) : []);

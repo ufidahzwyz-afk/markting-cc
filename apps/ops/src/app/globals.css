@@ -295,3 +295,9 @@ button { border:0; }
 @media(prefers-reduced-motion:reduce) { *,*:before,*:after { scroll-behavior:auto!important; transition:none!important; animation:none!important; } }
 
 @media(max-width:760px) { .ui-toolbar-main { gap:8px; width:100%; } .ui-toolbar-main>.ui-tabs { width:100%; gap:15px; padding:0; overflow:auto; } .ui-search-field,.ui-search-field input { width:100%; } .ui-toolbar-filters { width:100%; gap:8px; } .ui-filter-field { flex-wrap:wrap; gap:5px; } .ui-toolbar>span { font-size:12px; } .ui-task-panel .ui-panel-header { flex-wrap:wrap; } .ui-task-panel .ui-panel-header>.ui-search { width:100%; } .ui-form-grid { grid-template-columns:1fr; gap:0; } .ui-drawer-footer .ui-local-note { flex:1 0 100%; } .ui-chart-readout { gap:8px; flex-wrap:wrap; } .ui-report-grid>.ui-panel { width:100%; } .ui-report-grid .ui-table { min-width:0; } }
+
+/* Scoped automatic-source controls keep narrow settings pages usable. */
+.ui-source-setting-row { flex-wrap:wrap; }
+.ui-source-setting-row>div { min-width:160px; }
+.ui-source-setting-row p,.ui-draft-fingerprint { overflow-wrap:anywhere; }
+.ui-login-qr { display:block; width:220px; max-width:100%; height:auto; margin:12px auto; }

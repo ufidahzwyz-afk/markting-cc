@@ -5,10 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createTestDatabase, openDatabase, migrateDatabase, rollbackDatabase, seedDemo, DEMO_ORG_ID, DEMO_OWNER_ID } from "../src/index";
 
-test("baseline creates 60 domain tables, migration checksums and idempotent anonymous memberships",async()=>{
+test("upgraded baseline preserves 60 business tables and adds a durable model quota ledger",async()=>{
   const db=await createTestDatabase();
   try{
-    assert.equal(Number((await db.query("SELECT count(*) AS count FROM information_schema.tables WHERE table_schema='public'")).rows[0]!.count),61);
+    assert.equal(Number((await db.query("SELECT count(*) AS count FROM information_schema.tables WHERE table_schema='public'")).rows[0]!.count),62);
     assert.deepEqual(await migrateDatabase(db),[]);await seedDemo(db);
     assert.equal((await db.query("SELECT id FROM users")).rows.length,2);
     assert.equal((await db.query("SELECT id FROM memberships")).rows.length,2);
@@ -33,7 +33,21 @@ test("composite foreign keys reject cross-org records and immutable audit rows r
 
 test("rollback is explicit, transactional and baseline can be reapplied",async()=>{
   const db=await createTestDatabase();
-  try{assert.equal(await rollbackDatabase(db),2);assert.equal(await rollbackDatabase(db),1);assert.deepEqual(await migrateDatabase(db),[1,2]);await seedDemo(db);assert.equal((await db.query("SELECT id FROM users")).rows.length,2);}finally{await db.close();}
+  try{assert.equal(await rollbackDatabase(db),5);assert.equal(await rollbackDatabase(db),4);assert.equal(await rollbackDatabase(db),3);assert.equal(await rollbackDatabase(db),2);assert.equal(await rollbackDatabase(db),1);assert.deepEqual(await migrateDatabase(db),[1,2,3,4,5]);await seedDemo(db);assert.equal((await db.query("SELECT id FROM users")).rows.length,2);}finally{await db.close();}
+});
+
+test("V1.4 additive upgrade retains baseline business rows, original modes and migration checksums",async()=>{
+  const db=await createTestDatabase();
+  try{
+    for(const version of [5,4,3]) assert.equal(await rollbackDatabase(db),version);
+    await db.query("INSERT INTO settings(org_id,key,value,schema_version,updated_by) VALUES($1,'existing-business-setting','{\"retained\":true}',3,$2)",[DEMO_ORG_ID,DEMO_OWNER_ID]);
+    await db.query("INSERT INTO tasks(org_id,type,title,brief,business_line,owner_user_id,due_at,priority,status,version) VALUES($1,'content','existing editable task','{\"manual\":true}','shared',$2,now(),'P1','todo',7)",[DEMO_ORG_ID,DEMO_OWNER_ID]);
+    const baseline = async()=>({settings:(await db.query("SELECT * FROM settings ORDER BY id")).rows,tasks:(await db.query("SELECT * FROM tasks ORDER BY id")).rows,users:(await db.query("SELECT * FROM users ORDER BY id")).rows,memberships:(await db.query("SELECT * FROM memberships ORDER BY id")).rows,checksums:(await db.query("SELECT version,sha256,down_sha256 FROM schema_migrations WHERE version<=2 ORDER BY version")).rows});
+    const before=await baseline();
+    assert.deepEqual(await migrateDatabase(db),[3,4,5]);
+    assert.deepEqual(await baseline(),before);
+    assert.equal((await db.query("SELECT write_enabled FROM organizations WHERE id=$1",[DEMO_ORG_ID])).rows[0]!.write_enabled,false);
+  }finally{await db.close();}
 });
 
 test("persistent local PostgreSQL survives reopen; public-existing mode never bootstraps an absent database",async()=>{

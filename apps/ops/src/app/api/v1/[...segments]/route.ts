@@ -12,6 +12,9 @@ import { handleAdsReporting } from "@/lib/handlers/ads-reporting";
 import { handleLeads } from "@/lib/handlers/leads";
 import { handleExecution } from "@/lib/handlers/execution";
 import { handleBrowser } from "@/lib/handlers/browser";
+import { handleAutomation } from "@/lib/handlers/automation";
+import { handleCredentials } from "@/lib/handlers/credentials";
+import { handleModel } from "@/lib/handlers/model";
 import type { ServiceContext } from "@boran/domain/core";
 
 export const dynamic = "force-dynamic";
@@ -106,7 +109,7 @@ async function route(request: Request, routeContext: RouteContext) {
       idempotencyKey(request);
       body = request.method === "DELETE" && request.body === null ? {} : await readBody(request);
     }
-    for (const handler of [handleWorkspace, handleMarketing, handleContent, handleAdsReporting, handleLeads, handleExecution, handleBrowser]) {
+    for (const handler of [handleModel, handleAutomation, handleCredentials, handleWorkspace, handleMarketing, handleContent, handleAdsReporting, handleLeads, handleExecution, handleBrowser]) {
       const response = await handler(ctx, request, segments, body);
       if (response) return response;
     }
