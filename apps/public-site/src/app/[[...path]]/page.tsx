@@ -9,7 +9,7 @@ import { LeadForm } from "../lead-form";
 import { PageView } from "../page-view";
 const load = cache(async (parts: string[]) => {
   const ctx = await publicContext(); const policy = sitePolicy(); const path = `/${parts.join("/")}`;
-  return { ctx, result: await readPublishedPage(ctx.db, ctx.orgId, new URL(policy.publicOrigin).host, path) };
+  return { ctx, result: await readPublishedPage(ctx.db, ctx.orgId, new URL(policy.publicOrigin).host, path, ctx.mode) };
 });
 export const dynamic = "force-dynamic";
 export async function generateMetadata({ params }: { params: Promise<{ path?: string[] }> }): Promise<Metadata> {

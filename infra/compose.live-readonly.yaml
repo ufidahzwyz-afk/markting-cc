@@ -1,0 +1,91 @@
+# Keep the existing Compose project and volumes. Explicitly configured real reads do not enable publication or paid changes.
+name: boran-marketing-local
+x-readonly-environment: &readonly-environment
+  APP_ENV: development
+  AUTH_MODE: local
+  BORAN_MODE: live
+  AI_MODE: real
+  BORAN_ORG_ID: ${BORAN_ORG_ID:?Set the existing organization ID from local settings}
+  BORAN_SECRET_STORE_ROOT: /var/lib/boran/secrets/store
+  BORAN_SECRET_KEY_FILE: /var/lib/boran/secrets/master.key
+  BORAN_SERVICE_KEY_FILE: /var/lib/boran/secrets/service.key
+  BORAN_SOURCE_STORE_ROOT: /var/lib/boran/sources
+  BORAN_SOURCE_ROOT: /var/lib/boran/sources
+  BROWSER_LOCAL_REPLAY_ROOT: /var/lib/boran/secrets/service-replay
+  BROWSER_IDENTITY_MODE: local_service
+  BROWSER_LOCAL_SERVICE_AUDIENCE: http://browser-runtime:3003
+  BROWSER_LOCAL_ALLOWED_ROLES: worker,ops
+  BROWSER_LOCAL_SERVICES: '{"boran-worker":{"orgIds":["${BORAN_ORG_ID:?Set organization ID}"],"roles":["worker"]},"boran-ops":{"orgIds":["${BORAN_ORG_ID:?Set organization ID}"],"roles":["ops"]}}'
+  BROWSER_DISPATCH_ORGS: ${BORAN_ORG_ID:?Set organization ID}
+  NODE_USE_ENV_PROXY: '1'
+  HTTPS_PROXY: http://egress-proxy:8080
+  HTTP_PROXY: http://egress-proxy:8080
+  NO_PROXY: localhost,127.0.0.1,postgres,ops,public-site,worker,browser-runtime,egress-proxy
+  WRITE_ENABLED: 'false'
+  ADS_WRITE_ENABLED: 'false'
+  PUBLISH_ENABLED: 'false'
+  PRODUCTION_PII_AUTOMATION_ENABLED: 'false'
+services:
+  private-init:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+      target: development
+    user: root
+    environment:
+      BORAN_SECRET_STORE_ROOT: /var/lib/boran/secrets/store
+      BORAN_SECRET_KEY_FILE: /var/lib/boran/secrets/master.key
+      BORAN_SERVICE_KEY_FILE: /var/lib/boran/secrets/service.key
+      BORAN_SOURCE_STORE_ROOT: /var/lib/boran/sources
+      BROWSER_LOCAL_REPLAY_ROOT: /var/lib/boran/secrets/service-replay
+    volumes: [secrets-data:/var/lib/boran/secrets, sources-data:/var/lib/boran/sources]
+    command: [sh, -c, 'node scripts/initialize-private-runtime.mjs && chown -R node:node /var/lib/boran/secrets /var/lib/boran/sources']
+    networks: [backend]
+    restart: 'no'
+  egress-proxy:
+    image: node:24.19.0-bookworm-slim
+    user: node
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes: [./../scripts/egress-proxy.mjs:/opt/boran/egress-proxy.mjs:ro]
+    command: [node, /opt/boran/egress-proxy.mjs]
+    environment:
+      # Add only authorized market/competitor/login website hostnames, separated by commas; no wildcards.
+      BORAN_EGRESS_ALLOW_HOSTS: ${BORAN_EGRESS_ALLOW_HOSTS:-api.deepseek.com,www.googleapis.com,oauth2.googleapis.com,docs.google.com,drive.google.com,chatgpt.com,auth.openai.com,cdn.oaistatic.com}
+    networks: [backend, egress]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+  ops:
+    environment: *readonly-environment
+    depends_on:
+      private-init: { condition: service_completed_successfully }
+      egress-proxy: { condition: service_healthy }
+  worker:
+    environment: *readonly-environment
+    depends_on:
+      private-init: { condition: service_completed_successfully }
+      egress-proxy: { condition: service_healthy }
+  browser-runtime:
+    environment:
+      <<: *readonly-environment
+      BROWSER_HTTP_PROXY_SERVER: http://egress-proxy:8080
+      BROWSER_INTERACTION_SERVICES: ${BROWSER_INTERACTION_SERVICES:-boran-ops}
+      BROWSER_RECIPES_FILE: ${BROWSER_RECIPES_FILE:-}
+      BROWSER_CHATGPT_RECIPE_FILE: ${BROWSER_CHATGPT_RECIPE_FILE:-}
+      BROWSER_WEBSITE_ALLOWED_ORIGINS: ${BROWSER_WEBSITE_ALLOWED_ORIGINS:-}
+      BROWSER_CAPABILITY_ARTIFACTS_FILE: ${BROWSER_CAPABILITY_ARTIFACTS_FILE:-}
+      BROWSER_BAIDU_NATIVE_CONTRACT_VERSION: ${BROWSER_BAIDU_NATIVE_CONTRACT_VERSION:-}
+      BROWSER_BAIDU_REVIEW_CONTRACT_FILE: ${BROWSER_BAIDU_REVIEW_CONTRACT_FILE:-}
+    depends_on:
+      private-init: { condition: service_completed_successfully }
+      egress-proxy: { condition: service_healthy }
+volumes:
+  secrets-data:
+  sources-data:
+networks:
+  egress:

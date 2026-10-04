@@ -44,10 +44,10 @@ function inboxAdapter(db: Database, orgId: string, mode: Mode): NotificationAdap
 export interface ReportDispatchResult { ready: number; inApp: number; external: number; archived: number; blocked: number; failed: number; }
 
 /** Polls persisted report events. External deliveries keep the domain's lease/unknown/reconcile protocol. */
-export async function dispatchReports(db: Database): Promise<ReportDispatchResult> {
+export async function dispatchReports(db: Database, scope: {orgId?: string; mode?: Mode} = {}): Promise<ReportDispatchResult> {
   const result: ReportDispatchResult = { ready: 0, inApp: 0, external: 0, archived: 0, blocked: 0, failed: 0 };
   const ready = await db.transaction(async (tx) => {
-    const events = (await tx.query("SELECT * FROM outbox_events WHERE event_type='report.ready' AND dispatched_at IS NULL AND next_attempt_at<=now() ORDER BY next_attempt_at,id LIMIT 20 FOR UPDATE SKIP LOCKED")).rows;
+    const events = (await tx.query("SELECT * FROM outbox_events WHERE event_type='report.ready' AND dispatched_at IS NULL AND next_attempt_at<=now() AND ($1::uuid IS NULL OR org_id=$1) AND ($2::text IS NULL OR payload->>'mode'=$2) ORDER BY next_attempt_at,id LIMIT 20 FOR UPDATE SKIP LOCKED", [scope.orgId ?? null, scope.mode ?? null])).rows;
     let processed = 0; let needsHuman = 0;
     for (const event of events) {
       const report = (await tx.query("SELECT * FROM report_snapshots WHERE org_id=$1 AND id=$2 FOR UPDATE", [event.org_id, event.aggregate_id])).rows[0];
@@ -66,7 +66,7 @@ export async function dispatchReports(db: Database): Promise<ReportDispatchResul
     return { processed, needsHuman };
   });
   result.ready = ready.processed; result.blocked += ready.needsHuman;
-  const notifications = (await db.query("SELECT e.id AS event_id,n.*,r.body_json FROM outbox_events e JOIN notifications n ON n.org_id=e.org_id AND n.id=e.aggregate_id JOIN report_snapshots r ON r.org_id=n.org_id AND r.id=n.report_id WHERE e.event_type='notification.deliver' AND e.dispatched_at IS NULL AND e.next_attempt_at<=now() ORDER BY e.next_attempt_at,e.id LIMIT 40")).rows;
+  const notifications = (await db.query("SELECT e.id AS event_id,n.*,r.body_json FROM outbox_events e JOIN notifications n ON n.org_id=e.org_id AND n.id=e.aggregate_id JOIN report_snapshots r ON r.org_id=n.org_id AND r.id=n.report_id WHERE e.event_type='notification.deliver' AND e.dispatched_at IS NULL AND e.next_attempt_at<=now() AND ($1::uuid IS NULL OR e.org_id=$1) AND ($2::text IS NULL OR r.body_json->>'mode'=$2) ORDER BY e.next_attempt_at,e.id LIMIT 40", [scope.orgId ?? null, scope.mode ?? null])).rows;
   for (const notification of notifications) {
     const mode = modeOf(notification); const ctx = mode ? await context(db, String(notification.org_id), mode) : null;
     const adapter = mode && (notification.channel === "in_app" ? inboxAdapter(db, String(notification.org_id), mode) : deliveryAdapters.get(registryKey(String(notification.org_id), mode))?.notification);
@@ -77,7 +77,7 @@ export async function dispatchReports(db: Database): Promise<ReportDispatchResul
       await blocked(db, String(notification.event_id), error instanceof DomainError ? error.code : "NOTIFICATION_DISPATCH_FAILED", "notification_recovery"); result.blocked++;
     }
   }
-  const archives = (await db.query("SELECT e.id AS event_id,r.* FROM outbox_events e JOIN report_snapshots r ON r.org_id=e.org_id AND r.id=e.aggregate_id WHERE e.event_type='report.archive' AND e.dispatched_at IS NULL AND e.next_attempt_at<=now() ORDER BY e.next_attempt_at,e.id LIMIT 20")).rows;
+  const archives = (await db.query("SELECT e.id AS event_id,r.* FROM outbox_events e JOIN report_snapshots r ON r.org_id=e.org_id AND r.id=e.aggregate_id WHERE e.event_type='report.archive' AND e.dispatched_at IS NULL AND e.next_attempt_at<=now() AND ($1::uuid IS NULL OR e.org_id=$1) AND ($2::text IS NULL OR r.body_json->>'mode'=$2) ORDER BY e.next_attempt_at,e.id LIMIT 20", [scope.orgId ?? null, scope.mode ?? null])).rows;
   for (const report of archives) {
     const mode = modeOf(report); const ctx = mode ? await context(db, String(report.org_id), mode) : null;
     const adapter = mode ? deliveryAdapters.get(registryKey(String(report.org_id), mode))?.drive : undefined;

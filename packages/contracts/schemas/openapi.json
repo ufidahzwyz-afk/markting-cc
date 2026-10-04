@@ -2317,7 +2317,7 @@
             }
           }
         },
-        "description": "写入持久browser_command并返回run_id；命令校验fencing token和会话版本。可用API先验证，浏览器会话仅在云端profile中。登录/验证成功不代表发布已成功。"
+        "description": "写入持久 browser_command 并返回 command_id；命令核验 fencing token 和会话版本。浏览器使用服务端受保护 profile，支持 Mac 本地运行；登录或身份验证成功不代表发布已成功。"
       }
     },
     "/platform-accounts/{id}/session": {
@@ -6287,6 +6287,896 @@
           "owner"
         ]
       }
+    },
+    "/platform-accounts/{id}/enable": {
+      "post": {
+        "summary": "由真实身份回读证明启用账号；仍需能力与执行规则",
+        "operationId": "post_platform_accounts_id_enable",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "platform_accounts.version"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "实际运行响应；配置、入队与实际业务验收分别记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformAccountEnabled"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "结构化错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/login-sessions/{id}/challenge": {
+      "post": {
+        "summary": "本人完成固定配方的验证码或二维码验证；验证码不持久化",
+        "operationId": "post_login_sessions_id_challenge",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "实际运行响应；配置、入队与实际业务验收分别记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginChallengeResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "结构化错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginChallengeCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/login-sessions/{id}/complete": {
+      "post": {
+        "summary": "读取实际账号身份并完成已绑定验证会话",
+        "operationId": "post_login_sessions_id_complete",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "实际运行响应；配置、入队与实际业务验收分别记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginChallengeResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "结构化错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginCompleteCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/platform-accounts/{id}/login": {
+      "post": {
+        "summary": "按固定服务端配方排队自动登录",
+        "operationId": "post_platform_accounts_id_login",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "实际运行响应；配置、入队与实际业务验收分别记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformLoginQueued"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "结构化错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connections/{id}/credentials": {
+      "post": {
+        "summary": "本地加密保存凭据，轮换撤销旧会话；DTO不返回凭据",
+        "operationId": "post_connections_id_credentials",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "连接 edit_version SHA-256"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "实际运行响应；配置、入队与实际业务验收分别记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialSaved"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "结构化错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialWrite"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/platform-accounts/{id}/credentials": {
+      "post": {
+        "summary": "本地加密保存凭据，轮换撤销旧会话；DTO不返回凭据",
+        "operationId": "post_platform_accounts_id_credentials",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "连接 edit_version SHA-256"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "实际运行响应；配置、入队与实际业务验收分别记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialSaved"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "结构化错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialWrite"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/automation/model": {
+      "get": {
+        "summary": "读取组织模型配置与真实配置状态",
+        "operationId": "get_automation_model",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "实际运行响应；配置、入队与实际业务验收分别记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelConfigurationRead"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "结构化错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "真实负责人保存官方 DeepSeek 路由与持久调用限额",
+        "operationId": "put_automation_model",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "配置 schema_version，首次为0"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "实际运行响应；配置、入队与实际业务验收分别记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelConfigurationRead"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "结构化错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelConfigurationWrite"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/automation/model/verify": {
+      "post": {
+        "summary": "核验实际账号模型目录；不视为生成或业务验收",
+        "operationId": "post_automation_model_verify",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "实际运行响应；配置、入队与实际业务验收分别记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelCatalogChecked"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "结构化错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/automation/status": {
+      "get": {
+        "summary": "组织内来源、洞察与私有候选稿读模型",
+        "operationId": "get_automation_status",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "实际运行响应；配置、入队与实际业务验收分别记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationStatusRead"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "结构化错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/automation/drafts": {
+      "get": {
+        "summary": "组织内来源、洞察与私有候选稿读模型",
+        "operationId": "get_automation_drafts",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "实际运行响应；配置、入队与实际业务验收分别记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivateDraftList"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "结构化错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/automation/drafts/{id}": {
+      "get": {
+        "summary": "组织内来源、洞察与私有候选稿读模型",
+        "operationId": "get_automation_drafts_id",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "实际运行响应；配置、入队与实际业务验收分别记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivateDraftRead"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "结构化错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "保留来源与人工版本，追加私有候选稿版本",
+        "operationId": "patch_automation_drafts_id",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "当前私有草稿版本号"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "实际运行响应；配置、入队与实际业务验收分别记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivateDraftRead"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "结构化错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrivateDraftEdit"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/platform-accounts/{id}/capabilities/verify": {
+      "post": {
+        "summary": "负责人触发服务端实际能力验收；不接受客户端能力证明",
+        "operationId": "post_platform_accounts_id_capabilities_verify",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "已持久化的实际响应；外部效果仍以读回核验为准",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityVerificationQueued"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "结构化错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "写入持久 browser_command 并返回 command_id；命令核验 fencing token、账号与会话版本。浏览器使用服务端受保护 profile，支持 Mac 本地运行。仅接受服务端选择且有实际读回证据的能力产物；排队或登录成功不代表能力验证或发布成功。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyCommand"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -7612,6 +8502,14 @@
           },
           "reason": {
             "type": "string"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "internal",
+              "public"
+            ],
+            "description": "负责人或审核人明确核实事实并确认独立公开许可后，可将内部事实转为公开；AI不能授予。"
           }
         },
         "required": [
@@ -8767,7 +9665,7 @@
                 "const": false
               },
               "status": {
-                "const": "login_proxy_integration_required"
+                "const": "challenge_verification_pending"
               },
               "interaction_ticket": {
                 "anyOf": [
@@ -10484,7 +11382,17 @@
           },
           "edit_version": {
             "type": "string",
-            "pattern": "^[a-f0-9]{64}$"
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "连接配置乐观锁版本；不包含明文凭据"
+          },
+          "has_credential_ref": {
+            "type": "boolean",
+            "description": "仅表示已保存凭据，不代表实际登录或读取通过"
+          },
+          "scope_json": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "明确的来源范围或服务端适配器引用；不包含凭据载荷"
           }
         },
         "required": [
@@ -13624,6 +14532,16 @@
             ]
           },
           "channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "adapter_version": {
             "anyOf": [
               {
                 "type": "string"
@@ -17980,6 +18898,924 @@
               "key",
               "value",
               "schema_version"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "PlatformAccountEnabled": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "connection_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "display_name": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "session_status": {
+                "type": "string",
+                "enum": [
+                  "not_connected",
+                  "active",
+                  "expired",
+                  "challenge_required",
+                  "revoked",
+                  "unknown"
+                ]
+              },
+              "session_expires_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "last_session_verified_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "timezone": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer"
+              },
+              "session_version": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
+                  }
+                ]
+              },
+              "channel_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "execution_policy_required": {
+                "const": true
+              },
+              "platform_capabilities_required": {
+                "const": true
+              },
+              "adapter_version": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "connection_id",
+              "provider",
+              "display_name",
+              "enabled",
+              "session_status",
+              "session_expires_at",
+              "last_session_verified_at",
+              "timezone",
+              "version",
+              "session_version",
+              "channel_id"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "LoginChallengeCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "open",
+              "submit",
+              "verify",
+              "close"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9]{1,16}$",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "LoginCompleteCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "platform_account_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "LoginChallengeResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "interaction_ready": {
+                "type": "boolean"
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "otp",
+                  "qr"
+                ]
+              },
+              "expires_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "state": {
+                "type": "string"
+              },
+              "verified": {
+                "type": "boolean"
+              },
+              "session_version": {
+                "type": "integer"
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "status": {
+                "type": "string"
+              },
+              "qr_image": {
+                "type": "string",
+                "pattern": "^data:image/png;base64,",
+                "maxLength": 2000000
+              }
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "PlatformLoginQueued": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "command_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "state": {
+                "type": "string"
+              },
+              "verified": {
+                "const": false
+              }
+            },
+            "required": [
+              "command_id",
+              "state",
+              "verified"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "CredentialWrite": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "api_key"
+              },
+              "api_key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 10000,
+                "writeOnly": true
+              }
+            },
+            "required": [
+              "kind",
+              "api_key"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "platform_password"
+              },
+              "username": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 10000,
+                "writeOnly": true
+              },
+              "password": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 10000,
+                "writeOnly": true
+              },
+              "token": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 10000,
+                "writeOnly": true
+              }
+            },
+            "required": [
+              "kind",
+              "username",
+              "password"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "drive_oauth"
+              },
+              "client_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 10000,
+                "writeOnly": true
+              },
+              "client_secret": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 10000,
+                "writeOnly": true
+              },
+              "refresh_token": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 10000,
+                "writeOnly": true
+              },
+              "access_token": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 10000,
+                "writeOnly": true
+              },
+              "expires_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "kind",
+              "client_id",
+              "client_secret",
+              "refresh_token"
+            ]
+          }
+        ]
+      },
+      "CredentialSaved": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "display_name": {
+                "type": "string"
+              },
+              "timezone": {
+                "type": "string"
+              },
+              "currency": {
+                "type": "string"
+              },
+              "health": {
+                "type": "string",
+                "enum": [
+                  "unknown",
+                  "healthy",
+                  "partial",
+                  "stale",
+                  "rate_limited",
+                  "failed",
+                  "disabled"
+                ]
+              },
+              "enabled_for_reporting": {
+                "type": "boolean"
+              },
+              "authoritative_report_type": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "last_success_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "capabilities_verified_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "source_kind": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "market_public",
+                      "competitor_public",
+                      "mac_drive",
+                      "chatgpt",
+                      "other"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "read_mode": {
+                "type": "string",
+                "enum": [
+                  "native_api",
+                  "authorized_browser",
+                  "drive_sync",
+                  "manual_import",
+                  "mock"
+                ]
+              },
+              "access_status": {
+                "type": "string",
+                "enum": [
+                  "not_configured",
+                  "verifying",
+                  "connected",
+                  "auth_required",
+                  "unsupported",
+                  "disabled"
+                ]
+              },
+              "last_attempt_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "last_error_code": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "edit_version": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$",
+                "description": "连接配置乐观锁版本；不包含明文凭据"
+              },
+              "has_credential_ref": {
+                "type": "boolean",
+                "description": "仅表示已保存凭据，不代表实际登录或读取通过"
+              },
+              "scope_json": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "明确的来源范围或服务端适配器引用；不包含凭据载荷"
+              },
+              "credential_kind": {
+                "type": "string",
+                "enum": [
+                  "api_key",
+                  "platform_password",
+                  "drive_oauth"
+                ]
+              },
+              "credential_saved": {
+                "const": true
+              },
+              "verified": {
+                "const": false
+              },
+              "login_command_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "login_status": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "adapter_configuration_required",
+                  "verification_required"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "provider",
+              "display_name",
+              "timezone",
+              "currency",
+              "health",
+              "enabled_for_reporting",
+              "authoritative_report_type",
+              "last_success_at",
+              "capabilities_verified_at",
+              "source_kind",
+              "read_mode",
+              "access_status",
+              "last_attempt_at",
+              "last_error_code",
+              "edit_version"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "ModelConfigurationWrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "connection_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "chat_completions",
+              "messages"
+            ]
+          },
+          "insight_model": {
+            "type": "string"
+          },
+          "content_model": {
+            "type": "string"
+          },
+          "response_format": {
+            "type": "string",
+            "enum": [
+              "json_object",
+              "json_schema",
+              "none"
+            ]
+          },
+          "max_calls_per_day": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_calls_per_minute": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_input_tokens": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "connection_id",
+          "base_url",
+          "protocol",
+          "insight_model",
+          "content_model",
+          "response_format",
+          "max_calls_per_day",
+          "max_calls_per_minute",
+          "max_input_tokens",
+          "max_output_tokens"
+        ]
+      },
+      "ModelConfigurationRead": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "schema_version": {
+                "type": "integer"
+              },
+              "configuration": {
+                "$ref": "#/components/schemas/ModelConfigurationWrite"
+              },
+              "readiness": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "verification": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "models_verified": {
+                    "type": "boolean"
+                  },
+                  "verified_at": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "missing_models": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "models_verified",
+                  "verified_at",
+                  "missing_models"
+                ]
+              }
+            },
+            "required": [
+              "schema_version",
+              "configuration",
+              "readiness",
+              "verification"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "ModelCatalogChecked": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "models_verified": {
+                "type": "boolean"
+              },
+              "verified_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "missing_models": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "actual_generation_verified": {
+                "const": false
+              },
+              "error_code": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "models_verified",
+              "verified_at",
+              "missing_models",
+              "actual_generation_verified"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "PrivateDraftEdit": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "body_blocks": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 60,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "paragraph",
+                    "bullet",
+                    "heading"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            }
+          },
+          "claim_refs": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "block_index": {
+                  "type": "integer"
+                },
+                "claim_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "block_index",
+                "claim_id"
+              ]
+            }
+          },
+          "cta": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "href": {
+                    "type": "string"
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "navigate",
+                      "scroll_to_form",
+                      "contact"
+                    ]
+                  }
+                },
+                "required": [
+                  "label",
+                  "href",
+                  "action"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "title",
+          "body_blocks",
+          "claim_refs"
+        ]
+      },
+      "AutomationStatusRead": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "PrivateDraftRead": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "PrivateDraftList": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "CapabilityVerificationQueued": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "command_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "state": {
+                "type": "string"
+              },
+              "verified": {
+                "const": false
+              },
+              "capability_status": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "command_id",
+              "state",
+              "verified",
+              "capability_status"
             ]
           },
           "meta": {

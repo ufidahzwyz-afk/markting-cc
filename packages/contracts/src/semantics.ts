@@ -102,7 +102,10 @@ export function validateAiOutput(input: unknown, context: AiSemanticContext): Ai
   checkReferences(result);
   for (const insight of rows(output['insights'])) if(insight['candidate_state']==='ready' && !rows(insight['evidence']).some(ref=>{const claim=claimMap.get(String(ref['claim_key']));return ref['relation']==='supports' && claim && context.trustedClaims?.some(trusted=>(trusted['claim_id']??trusted['id'])===claim['claim_id'] && trusted['verification_status']==='verified' && trusted['public_permission']==='allowed' && trusted['decision_status']!=='revoked');}))reject('Ready insight needs an independently verified, permitted supporting claim');
   const insightKeys = new Set(rows(output['insights']).map(insight => insight['proposal_key']));
-  for (const topic of rows(output['topics'])) if (!insightKeys.has(topic['insight_key'])) reject('Unresolvable insight key');
+  for (const topic of rows(output['topics'])) {
+    if (!insightKeys.has(topic['insight_key'])) reject('Unresolvable insight key');
+    if (!rows(topic['targets']).length && (topic['auto_schedule_candidate'] !== false || topic['proposed_scheduled_at'] !== null || !rows(topic['gaps']).some(gap => gap['kind'] === 'account'))) reject('A private topic without accounts must record the account gap and cannot be scheduled');
+  }
   for (const action of rows(output['executed_actions'])) if (!context.executedActions?.some(trusted => same(action, trusted))) reject('AI cannot invent an executed state or readback evidence');
   for (const fact of rows(output['facts'])) if (!context.reportFacts?.some(trusted => same(fact, trusted))) reject('Report facts must copy deterministic input');
   if (result.workflow === 'reception_reply') {

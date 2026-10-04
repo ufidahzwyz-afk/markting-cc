@@ -39,3 +39,10 @@ export async function audit(ctx: ServiceContext, tx: SqlExecutor, action: string
 export async function emitOutbox(ctx: ServiceContext, tx: SqlExecutor, eventType: string, aggregateId: string, payload: unknown): Promise<void> {
   await tx.query("INSERT INTO outbox_events (id,org_id,event_id,event_type,aggregate_id,schema_version,payload,occurred_at,attempts,next_attempt_at) VALUES ($1,$2,$3,$4,$5,1,$6,$7,0,$7)", [uuid(), ctx.orgId, uuid(), eventType, aggregateId, JSON.stringify(payload), nowIso(ctx)]);
 }
+
+export interface WorkflowFence {stepId:string;leaseOwner:string;fencingToken:string|number;runId?:string}
+/** Keep the claimed step locked through business writes so a recovered worker cannot race the old lease. */
+export async function assertWorkflowFence(ctx:ServiceContext,tx:SqlExecutor,fence:WorkflowFence,runId?:string):Promise<void>{
+  const step=(await tx.query('SELECT * FROM workflow_steps WHERE org_id=$1 AND id=$2 FOR UPDATE',[ctx.orgId,fence.stepId])).rows[0];
+  if(!step||step['state']!=='running'||step['lease_owner']!==fence.leaseOwner||String(step['fencing_token'])!==String(fence.fencingToken)||!step['lease_until']||Date.parse(String(step['lease_until']))<=Date.parse(nowIso(ctx))||runId&&step['run_id']!==runId||fence.runId&&step['run_id']!==fence.runId)throw new DomainError('STALE_WORKFLOW_LEASE',409,'旧工作流租约不能写入业务结果');
+}

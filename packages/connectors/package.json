@@ -3,7 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts", "./sources": "./src/sources.ts", "./platforms": "./src/platforms.ts", "./baidu": "./src/baidu.ts", "./contracts": "./src/contracts.ts" },
-  "scripts": { "typecheck": "tsc --noEmit" },
-  "dependencies": { "@boran/contracts": "0.1.0" }
+  "exports": {
+    ".": "./src/index.ts",
+    "./sources": "./src/sources.ts",
+    "./platforms": "./src/platforms.ts",
+    "./baidu": "./src/baidu.ts",
+    "./contracts": "./src/contracts.ts",
+    "./secrets": "./src/secrets.ts",
+    "./source-runtime": "./src/source-runtime.ts",
+    "./source-content": "./src/source-content.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@boran/contracts": "0.1.0",
+    "unpdf": "1.8.1"
+  }
 }

@@ -9,6 +9,8 @@ export interface SourceCoverage {
   gaps?: string[];
   message_ids?: string[];
   branch?: string;
+  folder_ids?: string[];
+  ancestor_folder_ids?: string[];
 }
 export interface SourceSnapshot {
   providerFileId: string;
@@ -16,6 +18,11 @@ export interface SourceSnapshot {
   revision: string;
   contentHash: string;
   objectKey: string;
+  textObjectKey?: string;
+  textHash?: string;
+  scopeFolderIds?: string[];
+  ancestorFolderIds?: string[];
+  removed?: boolean;
   mimeType: string;
   retrievedAt: string;
   sourceModifiedAt: string | null;
@@ -29,13 +36,14 @@ export interface SourceReadRequest {
   orgId: string;
   connectionId: string;
   sourceKind: SourceKind;
-  scope: {urls?: readonly string[]; fileIds?: readonly string[]; conversationIds?: readonly string[]; projectIds?: readonly string[]};
+  scope: {urls?: readonly string[]; fileIds?: readonly string[]; folderIds?: readonly string[]; conversationIds?: readonly string[]; projectIds?: readonly string[]};
+  credentialRef?: string;
   cursor: unknown;
 }
 export type SourceReadResult =
   | {status: 'changed' | 'partial'; mode: 'mock' | 'live'; snapshots: SourceSnapshot[]; nextCursor: unknown; gaps: string[]}
   | {status: 'no_change'; mode: 'mock' | 'live'; snapshots: []; nextCursor: unknown; gaps: []}
-  | {status: 'failed'; mode: 'mock' | 'live'; snapshots: []; errorCode: 'NOT_CONFIGURED' | 'SCOPE_REQUIRED' | 'READ_FAILED' | 'INVALID_READ_RESULT' | 'SCOPE_MISMATCH'; gaps: string[]};
+  | {status: 'failed'; mode: 'mock' | 'live'; snapshots: []; errorCode: 'NOT_CONFIGURED' | 'SCOPE_REQUIRED' | 'READ_FAILED' | 'INVALID_READ_RESULT' | 'SCOPE_MISMATCH' | 'AUTH_REQUIRED' | 'CONTENT_UNSUPPORTED' | 'SCOPE_INCOMPLETE'; gaps: string[]};
 export interface SourceReader {readonly kind: SourceKind; readonly mode: 'mock' | 'live'; read(request: SourceReadRequest): Promise<SourceReadResult>}
 export type SourceTransport = (request: SourceReadRequest) => Promise<SourceReadResult>;
 export class UnconfiguredSourceReader implements SourceReader {
@@ -49,25 +57,32 @@ export class ConfiguredSourceReader implements SourceReader {
   async read(request: SourceReadRequest): Promise<SourceReadResult> {
     if (request.sourceKind !== this.kind) return this.failure('SCOPE_MISMATCH');
     const scope = this.kind === 'chatgpt' ? request.scope.conversationIds : this.kind === 'mac_drive' ? request.scope.fileIds : request.scope.urls;
-    if (!scope?.length && !(this.kind === 'chatgpt' && request.scope.projectIds?.length)) return this.failure('SCOPE_REQUIRED');
+    if (!scope?.length && !(this.kind === 'chatgpt' && request.scope.projectIds?.length) && !(this.kind==='mac_drive' && request.scope.folderIds?.length)) return this.failure('SCOPE_REQUIRED');
     try {
       const result = await this.transport(request);
       if (result.mode !== 'live') return this.failure('INVALID_READ_RESULT');
       if (result.status === 'failed') return {...result, snapshots: []};
       if (result.status === 'no_change') return result.snapshots.length === 0 ? result : this.failure('INVALID_READ_RESULT');
-      if (!result.snapshots.length) return this.failure('INVALID_READ_RESULT');
+      if (!result.snapshots.length && !(result.status==='partial' && result.gaps.length)) return this.failure('INVALID_READ_RESULT');
       for (const snapshot of result.snapshots) {
-        const inScope=this.kind==='chatgpt' ? (request.scope.conversationIds?.includes(snapshot.conversationId??'') || request.scope.projectIds?.includes(snapshot.projectId??'') && snapshot.coverage.project_id===snapshot.projectId) : scope!.includes(this.kind === 'mac_drive' ? snapshot.providerFileId : snapshot.sourceUrl ?? snapshot.providerFileId);
+        const folderAllowed=this.kind==='mac_drive' && snapshot.scopeFolderIds?.some(id=>request.scope.folderIds?.includes(id) && snapshot.ancestorFolderIds?.includes(id) && snapshot.coverage.folder_ids?.includes(id) && snapshot.coverage.ancestor_folder_ids?.includes(id));
+        const inScope=this.kind==='chatgpt' ? (request.scope.conversationIds?.includes(snapshot.conversationId??'') || request.scope.projectIds?.includes(snapshot.projectId??'') && snapshot.coverage.project_id===snapshot.projectId) : folderAllowed || (this.kind==='mac_drive'?scope?.includes(snapshot.providerFileId):scope?.some(url=>sameScopedUrl(url,snapshot.sourceUrl??snapshot.providerFileId)));
         if (!inScope) return this.failure('SCOPE_MISMATCH');
         if (!/^[a-f0-9]{64}$/.test(snapshot.contentHash) || !snapshot.revision || !snapshot.objectKey || !snapshot.coverage.scope || !Number.isFinite(Date.parse(snapshot.retrievedAt))) return this.failure('INVALID_READ_RESULT');
+        if ((snapshot.textObjectKey&&!snapshot.textHash)||(snapshot.textHash&&!/^[a-f0-9]{64}$/.test(snapshot.textHash))) return this.failure('INVALID_READ_RESULT');
         if (this.kind === 'chatgpt' && (snapshot.coverage.conversation_id !== snapshot.conversationId || !snapshot.coverage.message_ids?.length || !snapshot.coverage.branch)) return this.failure('INVALID_READ_RESULT');
       }
-      if(result.status==='partial' || result.gaps.length || result.snapshots.some(snapshot=>snapshot.coverage.status!=='complete'||snapshot.coverage.gaps?.length)) return {...result,status:'partial',gaps:result.gaps.length?result.gaps:['来源覆盖不完整，未推进完整水位']};
+      if(result.status==='partial' || result.gaps.length || result.snapshots.some(snapshot=>snapshot.coverage.status!=='complete'||snapshot.coverage.gaps?.length)) return {...result,status:'partial',nextCursor:request.cursor,gaps:result.gaps.length?result.gaps:['来源覆盖不完整，未推进完整水位']};
       return result;
     } catch { return this.failure('READ_FAILED'); } // Avoid logging provider response bodies or credentials.
   }
   private failure(errorCode: Extract<SourceReadResult, {status:'failed'}>['errorCode']): SourceReadResult { return {status: 'failed', mode: 'live', snapshots: [], errorCode, gaps: [`${this.kind} 读取未完成，水位保持不变`]}; }
 }
+function sameScopedUrl(left:string,right:string):boolean {try{const first=new URL(left),second=new URL(right);first.hash='';second.hash='';return first.toString()===second.toString();}catch{return left===right;}}
+export {SourceObjectStore,extractSourceText,extractSourceTextAsync} from './source-content';
+export type {SourceTextExtraction} from './source-content';
+export {createRuntimeSourceReaders,createRuntimeSourceTransports} from './source-runtime';
+export type {RuntimeSourceConfig,SourceSecretResolver,SourceCredential} from './source-runtime';
 export class MockSourceReader implements SourceReader {
   readonly mode = 'mock' as const;
   constructor(readonly kind: SourceKind, private readonly result: SourceReadResult) {}

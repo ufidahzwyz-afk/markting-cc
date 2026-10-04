@@ -1,4 +1,5 @@
 import { createTopic, updateTopic } from "./marketing";
+import {mockTopicReadable} from './marketing-read-scope';
 import { activeRoles, requireActiveRole } from "./authz";
 import { DomainError, audit, assertVersion, nowIso, uuid, type ServiceContext } from "./core";
 import type { SqlExecutor } from "@boran/db";
@@ -10,7 +11,7 @@ export interface WorkspaceThemeInput { title: string; businessLine: keyof typeof
 export interface WorkspaceThemeView extends WorkspaceThemeInput { id: string; updatedAt: string; version: number }
 function withinTx(ctx: ServiceContext, tx: SqlExecutor): ServiceContext { return { ...ctx, db: { query: tx.query.bind(tx), transaction: fn => fn(tx), close: async () => undefined } }; }
 function validate(input: WorkspaceThemeInput) {
-  if (typeof input.title !== "string" || !input.title.trim() || input.title.length > 100 || !(input.businessLine in lines) || !["草稿", "进行中", "待审核", "已暂停"].includes(input.status) || typeof input.audience !== "string" || input.audience.length > 180 || typeof input.goal !== "string" || input.goal.length > 500 || !Array.isArray(input.channels) || input.channels.some(item => !channels.includes(item)) || !Array.isArray(input.tasks) || input.tasks.length > 30 || new Set(input.tasks.map(task => task?.id)).size !== input.tasks.length || input.tasks.some(task => !task || typeof task.id !== "string" || task.id.length > 100 || typeof task.label !== "string" || !task.label.trim() || task.label.length > 200 || typeof task.done !== "boolean")) throw new DomainError("INVALID_THEME", 422, "主题信息或推进任务无效");
+  if (typeof input.title !== "string" || !input.title.trim() || input.title.length > 300 || !(input.businessLine in lines) || !["草稿", "进行中", "待审核", "已暂停"].includes(input.status) || typeof input.audience !== "string" || input.audience.length > 180 || typeof input.goal !== "string" || input.goal.length > 500 || !Array.isArray(input.channels) || input.channels.some(item => !channels.includes(item)) || !Array.isArray(input.tasks) || input.tasks.length > 30 || new Set(input.tasks.map(task => task?.id)).size !== input.tasks.length || input.tasks.some(task => !task || typeof task.id !== "string" || task.id.length > 100 || typeof task.label !== "string" || !task.label.trim() || task.label.length > 200 || typeof task.done !== "boolean")) throw new DomainError("INVALID_THEME", 422, "主题信息或推进任务无效");
 }
 async function owner(ctx: ServiceContext, input: WorkspaceThemeInput, tx: SqlExecutor) {
   const id = input.ownerId ?? (ctx.mode === "mock" ? owners[input.owner as keyof typeof owners] : undefined);
@@ -20,7 +21,7 @@ async function owner(ctx: ServiceContext, input: WorkspaceThemeInput, tx: SqlExe
 }
 export async function getWorkspaceThemes(ctx: ServiceContext): Promise<WorkspaceThemeView[]> {
   await requireActiveRole(ctx, ctx.db, "owner", "marketer");
-  const topics = (await ctx.db.query("SELECT t.*,s.value AS workspace_meta FROM topics t LEFT JOIN settings s ON s.org_id=t.org_id AND s.key='workspace.theme.'||t.id::text WHERE t.org_id=$1 AND t.state<>'discarded' ORDER BY t.updated_at DESC LIMIT 200", [ctx.orgId])).rows;
+  const topics = (await ctx.db.query(`SELECT t.*,s.value AS workspace_meta FROM topics t LEFT JOIN settings s ON s.org_id=t.org_id AND s.key='workspace.theme.'||t.id::text WHERE t.org_id=$1 AND ($2='live' OR (${mockTopicReadable('t')})) AND t.state<>'discarded' ORDER BY t.updated_at DESC LIMIT 200`, [ctx.orgId,ctx.mode])).rows;
   const tasks = (await ctx.db.query("SELECT t.*,u.display_name FROM tasks t JOIN users u ON u.id=t.owner_user_id WHERE t.org_id=$1 AND t.brief->>'workspace'='theme' ORDER BY (t.brief->>'ordinal')::integer,t.created_at", [ctx.orgId])).rows;
   return topics.map(row => {
     const items = tasks.filter(task => (task.brief as Record<string, unknown>).topic_id === row.id);
@@ -40,7 +41,7 @@ export async function saveWorkspaceTheme(ctx: ServiceContext, input: WorkspaceTh
     if (existing && !prior) throw new DomainError("NOT_FOUND", 404, "主题不存在");
     if (existing) assertVersion(Number(prior!.version), existing.expectedVersion);
     if (input.status === "进行中" && (!prior || !["active", "scheduled"].includes(String(prior.state)))) throw new DomainError("THEME_ACTIVATION_REQUIRED", 422, "主题需要有效规则和排期才能进入进行中，请先保存草稿");
-    const topic = existing ? await updateTopic(nested, existing.id, { ...fields, claimIds: (prior!.claim_ids ?? []) as string[], expectedVersion: existing.expectedVersion }) : await createTopic(nested, fields);
+    const topic = existing ? await updateTopic(nested, existing.id, { ...fields, offer: String(prior!.offer), angle: String(prior!.angle), claimIds: (prior!.claim_ids ?? []) as string[], expectedVersion: existing.expectedVersion }) : await createTopic(nested, fields);
     if (input.status === "已暂停") {
       await tx.query("UPDATE topics SET state='blocked' WHERE org_id=$1 AND id=$2", [ctx.orgId, topic.id]);
       await tx.query("UPDATE execution_actions SET state='cancelled',version=version+1 WHERE org_id=$1 AND target->>'topic_id'=$2 AND state IN ('queued','retry_wait')", [ctx.orgId, topic.id]);

@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./queue": "./src/queue.ts",
     "./runner": "./src/runner.ts",
-    "./scheduler": "./src/scheduler.ts"
+    "./scheduler": "./src/scheduler.ts",
+    "./automation-runtime": "./src/automation-runtime.ts"
   },
   "scripts": {
     "start": "tsx src/index.ts",

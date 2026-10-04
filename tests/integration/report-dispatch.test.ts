@@ -65,6 +65,19 @@ test("inactive operators receive no newly generated report delivery intents", as
   } finally { await db.query("UPDATE memberships SET active=true WHERE org_id=$1 AND user_id=$2", [ctx.orgId, DEMO_MARKETER_ID]); }
 });
 
+test("deployment-scoped delivery leaves other modes and organizations untouched",async()=>{
+  const mock=await createReportSnapshot(ctx,{kind:"daily",start:"2026-10-07",end:"2026-10-07"});
+  const live=await createReportSnapshot({...ctx,mode:"live"},{kind:"daily",start:"2026-10-08",end:"2026-10-08"});
+  const pending=async()=> (await db.query("SELECT * FROM outbox_events WHERE aggregate_id=$1 AND event_type='report.ready'",[mock.id])).rows;
+  const before=await pending();
+  const other=await dispatchReports(db,{orgId:"10000000-0000-4000-8000-000000000001",mode:"live"});
+  assert.equal(other.ready,0);assert.deepEqual(await pending(),before);
+  const selected=await dispatchReports(db,{orgId:ctx.orgId,mode:"live"});
+  assert.equal(selected.ready,1);assert.deepEqual(await pending(),before);
+  assert.equal((await db.query("SELECT count(*)::integer AS n FROM notifications WHERE report_id=$1",[mock.id])).rows[0]!.n,0);
+  assert.equal((await db.query("SELECT count(*)::integer AS n FROM notifications WHERE report_id=$1",[live.id])).rows[0]!.n,4);
+});
+
 test("a replaced delivery worker cannot overwrite a newer unknown result; later readback restores the same receipt", { timeout: 10000 }, async () => {
   await createReportSnapshot(ctx, { kind: "daily", start: "2026-10-06", end: "2026-10-06" });
   let entered!: () => void; let release!: () => void; let uncertainKey = "";

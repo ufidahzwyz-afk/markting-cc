@@ -16,7 +16,8 @@
     "./reception": "./src/reception.ts",
     "./privacy": "./src/privacy.ts",
     "./workspace": "./src/workspace.ts",
-    "./events": "./src/events.ts"
+    "./events": "./src/events.ts",
+    "./pipeline": "./src/marketing-pipeline.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
@@ -24,6 +25,7 @@
   "dependencies": {
     "@boran/db": "0.1.0",
     "@boran/contracts": "0.1.0",
-    "@boran/connectors": "0.1.0"
+    "@boran/connectors": "0.1.0",
+    "@boran/ai": "0.1.0"
   }
 }

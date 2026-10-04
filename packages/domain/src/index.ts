@@ -9,3 +9,4 @@ export * from "./privacy";
 export * from "./leads";
 export * from "./reception";
 export * from "./workspace";
+export * from "./marketing-pipeline";

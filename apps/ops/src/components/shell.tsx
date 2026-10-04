@@ -16,9 +16,10 @@ const navigation = [
   { href: "/reports", label: "效果复盘", icon: "chart" as const },
 ];
 
-export function Shell({ children, mode, actorName }: { children: ReactNode; mode: "mock" | "live"; actorName: string }) {
+export function Shell({ children, mode, actorName, localLogin = false }: { children: ReactNode; mode: "mock" | "live"; actorName: string; localLogin?: boolean }) {
   const [switchError, setSwitchError] = useState("");
   async function switchActor(actor_id: string) { try { await api("/session/actor", { method: "POST", body: { actor_id } }); window.location.reload(); } catch(error) { setSwitchError(error instanceof Error ? error.message : "账号切换失败"); } }
+  async function signOut() { try { await api('/local-auth/logout', { method: 'POST', body: {} }); window.location.assign('/login'); } catch(error) { setSwitchError(error instanceof Error ? error.message : '退出未完成'); } }
   const pathname = usePathname();
   const settings = useRef<HTMLDialogElement>(null);
   const current = navigation.find(item => pathname.startsWith(item.href));
@@ -32,8 +33,8 @@ export function Shell({ children, mode, actorName }: { children: ReactNode; mode
       <div className="sidebar-bottom"><button className="settings-button" type="button" onClick={() => settings.current?.showModal()}><Icon name="gear" size={18} />连接与执行规则</button><div className="workspace-user"><span className="ui-avatar">运</span><div><strong>{actorName}</strong><span>{mode === "mock" ? "本地测试空间" : "组织工作空间"}</span></div></div></div>
     </aside>
     <div className="workspace">
-      <header className="topbar"><div className="breadcrumb"><span>市场运营</span><Icon name="chevron" size={13} /><strong>{current?.label ?? "系统设置"}</strong></div><div className="topbar-actions"><span className="preview-label"><span />{mode === "mock" ? "本地测试 · 数据库已接入" : "组织工作空间"}</span><button type="button" className="ui-icon-button" aria-label="打开系统设置" onClick={() => settings.current?.showModal()}><Icon name="gear" size={18} /></button><span className="ui-avatar" aria-label={actorName}>运</span></div></header>
-      <main id="main-content" className="main-content" tabIndex={-1}>{children}</main>
+      <header className="topbar"><div className="breadcrumb"><span>市场运营</span><Icon name="chevron" size={13} /><strong>{current?.label ?? "系统设置"}</strong></div><div className="topbar-actions"><span className="preview-label"><span />{mode === "mock" ? "本地测试 · 数据库已接入" : "组织工作空间"}</span><button type="button" className="ui-icon-button" aria-label="打开系统设置" onClick={() => settings.current?.showModal()}><Icon name="gear" size={18} /></button>{localLogin&&<button type="button" className="ui-button ui-button-quiet" onClick={signOut}>退出</button>}<span className="ui-avatar" aria-label={actorName}>运</span></div></header>
+      <main id="main-content" className="main-content" tabIndex={-1}>{switchError&&<p className="ui-notice" role="alert">{switchError}</p>}{children}</main>
       <footer className="workspace-footer"><span>{mode === "mock" ? "本地测试工作空间" : "组织工作空间"}</span><span>外部发布与广告写入已关闭</span></footer>
     </div>
     <dialog className="ui-drawer settings-dialog" ref={settings} aria-labelledby="settings-title" onClick={event => { if (event.target === event.currentTarget) settings.current?.close(); }}>

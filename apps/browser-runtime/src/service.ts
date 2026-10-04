@@ -1,7 +1,8 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { SqlExecutor } from "@boran/db";
 import { audit, DomainError, nowIso, requireRole, stableHash, type ServiceContext } from "@boran/domain/core";
-import { ConnectorBlockedError, type BrowserCommandType, type PlatformAdapter, type PlatformExecutionContext, type PlatformResult, type VerificationEvidence } from "@boran/connectors";
+import { ConnectorBlockedError, type BrowserCommandType, type CapabilityVerification, type PlatformAdapter, type PlatformExecutionContext, type PlatformResult, type VerificationEvidence } from "@boran/connectors";
+import { platformConfigurationHash } from "./capabilities";
 
 export interface EnqueueBrowserCommand {
   command_type: BrowserCommandType;
@@ -33,7 +34,9 @@ interface LoginRow extends Record<string, unknown> {
 export interface BrowserServiceDependencies {
   adapters: ReadonlyMap<string, PlatformAdapter>;
   authorizeAction?: (ctx: ServiceContext, tx: SqlExecutor, actionId: string) => Promise<void>;
-  withProfile?: <T>(input: { orgId: string; accountId: string; fencingToken: number; channelId: string }, run: (browser: unknown) => Promise<T>) => Promise<T>;
+  withProfile?: <T>(input: { orgId: string; accountId: string; fencingToken: number; channelId: string; allowedOrigins?: readonly string[] }, run: (browser: unknown) => Promise<T>) => Promise<T>;
+  /** Private source text is consumed by the source service, never put in durable command/API DTOs. */
+  captureSource?: (data: Record<string, unknown>) => Promise<void>;
   /** Source adapters use their own reviewed allowlists; a command never carries a supplied URL. */
   sourceAdapter?: PlatformAdapter;
 }
@@ -44,6 +47,26 @@ function fail(code: string, status = 409): never { throw new DomainError(code, s
 function number(value: string | number | null) { const result = Number(value); if (!Number.isSafeInteger(result) || result < 0) fail("invalid_version", 422); return result; }
 function hashTicket(ticket: string) { return createHash("sha256").update(ticket).digest("hex"); }
 function sameHash(a: string, b: string) { return a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b)); }
+export function safePlatformData(data: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!data) return {};
+  const output: Record<string, unknown> = {};
+  for (const key of ["external_id", "review_status", "entity_type", "capability_status", "capability_artifact_id"]) if (typeof data[key] === "string" && /^[\p{L}\p{N}_.:-]{1,200}$/u.test(data[key] as string)) output[key] = data[key];
+  if (typeof data.published_url === "string") {
+    try { const url = new URL(data.published_url); if (url.protocol === "https:" && !url.username && !url.password && ![...url.searchParams.keys()].some(key => /token|password|secret|auth|cookie|session/i.test(key))) output.published_url = url.toString(); } catch { /* discard malformed or credential-bearing URLs */ }
+  }
+  if (Array.isArray(data.required_labels) && data.required_labels.every(label => typeof label === "string" && label.length <= 200)) output.required_labels = data.required_labels.slice(0, 20);
+  if (data.effective_fields && typeof data.effective_fields === "object" && !Array.isArray(data.effective_fields)) {
+    const allowed = new Set(["accountId", "entityType", "campaignId", "campaignName", "adgroupId", "adgroupName", "keywordId", "keyword", "creativeId", "title", "description1", "description2", "price", "maxPrice", "budget", "pause", "status", "device", "regionTarget", "schedule", "negativeWords", "exactNegativeWords", "matchType", "pcDestinationUrl", "mobileDestinationUrl", "displayUrl"]);
+    const fields: Record<string, unknown> = {};
+    const bounded = (value:unknown,depth=0):boolean => depth<=4&&(typeof value==='boolean'||typeof value==='number'&&Number.isFinite(value)||typeof value==='string'&&value.length<=1000||Array.isArray(value)&&value.length<=1000&&value.every(item=>bounded(item,depth+1))||!!value&&typeof value==='object'&&Object.keys(value).length<=30&&Object.entries(value).every(([key,item])=>!/token|password|secret|auth|cookie|session/i.test(key)&&bounded(item,depth+1)));
+    for (const [key, value] of Object.entries(data.effective_fields)) if (allowed.has(key) && bounded(value)) {
+      if (/DestinationUrl$|displayUrl/.test(key)) { try { const url=new URL(String(value)); if(url.protocol!=='https:'||url.username||url.password||[...url.searchParams.keys()].some(param=>/token|password|secret|auth|cookie|session/i.test(param)))continue; } catch { continue; } }
+      fields[key] = value;
+    }
+    output.effective_fields = fields;
+  }
+  return output;
+}
 export function parseBrowserCommand(body: unknown): EnqueueBrowserCommand {
   if (!body || typeof body !== "object" || Array.isArray(body)) fail("invalid_command", 422);
   const value = body as Record<string, unknown>;
@@ -54,8 +77,9 @@ export function parseBrowserCommand(body: unknown): EnqueueBrowserCommand {
   for (const field of ["platform_account_id", "connection_id", "execution_action_id", "workflow_run_id", "login_session_id"]) if (value[field] !== undefined && (typeof value[field] !== "string" || !uuidPattern.test(value[field]))) fail("invalid_reference", 422);
   if (value.session_version !== undefined && (typeof value.session_version !== "number" || !Number.isSafeInteger(value.session_version) || value.session_version < 0)) fail("invalid_session_version", 422);
   const refs = value.input_ref;
-  const refKeys = new Set(["content_version_id", "material_id", "source_id", "object_key", "publication_id", "action_snapshot_id", "reconcile_command_id"]);
+  const refKeys = new Set(["content_version_id", "material_id", "source_id", "object_key", "publication_id", "action_snapshot_id", "reconcile_command_id", "read_intent_id", "capability_artifact"]);
   if (!refs || typeof refs !== "object" || Array.isArray(refs) || Object.entries(refs).some(([key, val]) => !refKeys.has(key) || typeof val !== "string" || !/^[A-Za-z0-9_./-]{1,512}$/.test(val) || val.includes(".."))) fail("invalid_input_reference", 422);
+  if ("capability_artifact" in refs && (refs.capability_artifact !== "server-selected" || value.command_type !== "session_verify" || !value.platform_account_id || !value.connection_id || value.execution_action_id)) fail("invalid_capability_reference", 422);
   if (!value.platform_account_id && !value.connection_id) fail("target_required", 422);
   if (value.command_type === "source_fetch" && (!value.connection_id || !value.workflow_run_id || value.execution_action_id)) fail("invalid_source_command", 422);
   if (writeTypes.has(String(value.command_type)) && (!value.platform_account_id || !value.execution_action_id)) fail("authorization_required", 422);
@@ -172,7 +196,7 @@ export function createBrowserService(ctx: ServiceContext, dependencies: BrowserS
       await tx.query("UPDATE browser_commands SET heartbeat_at=$3,lease_until=$4 WHERE org_id=$1 AND id=$2", [ctx.orgId, id, clock().toISOString(), new Date(clock().getTime() + 90_000).toISOString()]);
     });
   }
-  async function finish(id: string, owner: string, token: number, result: PlatformResult) {
+  async function finish(id: string, owner: string, token: number, result: PlatformResult, capabilityProof?: CapabilityVerification) {
     return ctx.db.transaction(async (tx) => {
       const command = await assertLease(tx, id, owner, token);
       let state = "blocked";
@@ -188,23 +212,49 @@ export function createBrowserService(ctx: ServiceContext, dependencies: BrowserS
         if (verifiedCommand.command_type === "publish") {
           const action = (await tx.query<{ payload_hash: string; action_type: string }>("SELECT payload_hash,action_type FROM execution_actions WHERE org_id=$1 AND id=$2", [ctx.orgId, verifiedCommand.execution_action_id])).rows[0];
           if (!action || action.action_type !== "external.publish" || !result.evidence.contentHash || !/^[a-f0-9]{64}$/.test(result.evidence.contentHash) || result.evidence.contentHash !== action.payload_hash) fail("content_verification_mismatch");
+          const data = safePlatformData(result.data);
+          if (!data.external_id || !data.published_url || data.review_status !== "approved") fail("publication_receipt_missing");
         }
-        if (command.command_type === "session_verify" && command.platform_account_id) {
-          await tx.query("UPDATE platform_accounts SET session_status='active',last_session_verified_at=$3,session_version=session_version+1 WHERE org_id=$1 AND id=$2", [ctx.orgId, command.platform_account_id, result.evidence.capturedAt]);
+        if (["session_verify", "login"].includes(command.command_type) && command.platform_account_id) {
+          await tx.query("UPDATE platform_accounts SET session_status='active',last_session_verified_at=$3,session_version=session_version+1,adapter_version=$4 WHERE org_id=$1 AND id=$2", [ctx.orgId, command.platform_account_id, result.evidence.capturedAt,command.input_ref.adapter_version]);
         }
         state = "succeeded";
-      } else if (result.status === "unknown" || result.status === "submitted") state = "unknown";
+      } else if (result.status === "unknown" || result.status === "submitted" || result.status === "in_review") state = "unknown";
+      else if (result.status === "rejected") state = "failed";
       if (result.status === "challenge_required" && command.platform_account_id) await tx.query("UPDATE platform_accounts SET session_status='challenge_required',session_version=session_version+1 WHERE org_id=$1 AND id=$2", [ctx.orgId, command.platform_account_id]);
       // Only references and non-secret status metadata enter durable command results.
-      const safeEvidence = result.status === "verified" ? { verified: true, kind: result.evidence.kind, externalAccountId: result.evidence.externalAccountId, capturedAt: result.evidence.capturedAt, evidenceRef: result.evidence.evidenceRef, ...(result.evidence.labelsVerified !== undefined ? { labelsVerified: result.evidence.labelsVerified } : {}), ...(result.evidence.contentHash && /^[a-f0-9]{64}$/.test(result.evidence.contentHash) ? { contentHash: result.evidence.contentHash } : {}) } : null;
-      const safe = result.status === "verified" ? { status: result.status, evidence: safeEvidence } : result.status === "submitted" ? { status: result.status, externalId: result.externalId } : { status: result.status, reason: /^[A-Za-z0-9_.:-]{1,100}$/.test(result.reason) ? result.reason : "adapter_reason_redacted" };
+      const actualEvidence = "evidence" in result ? result.evidence : undefined;
+      if (actualEvidence && result.status !== "verified") {
+        const capturedAt = Date.parse(actualEvidence.capturedAt);
+        if (ctx.mode !== "live" || !actualEvidence.verified || !actualEvidence.evidenceRef || !Number.isFinite(capturedAt) || Math.abs(capturedAt-clock().getTime())>60_000) fail("unverified_result");
+        if (command.platform_account_id && (await account(tx, command.platform_account_id)).account_external_id !== actualEvidence.externalAccountId) fail("account_verification_mismatch");
+      }
+      const safeEvidence = actualEvidence ? { verified: true, kind: actualEvidence.kind, externalAccountId: actualEvidence.externalAccountId, capturedAt: actualEvidence.capturedAt, evidenceRef: actualEvidence.evidenceRef, ...(actualEvidence.labelsVerified !== undefined ? { labelsVerified: actualEvidence.labelsVerified } : {}), ...(actualEvidence.contentHash && /^[a-f0-9]{64}$/.test(actualEvidence.contentHash) ? { contentHash: actualEvidence.contentHash } : {}) } : null;
+      const data = "data" in result ? safePlatformData(result.data) : {};
+      if(result.status==='verified'&&['login','session_verify'].includes(command.command_type)&&command.platform_account_id){
+        const current=await account(tx,command.platform_account_id),connection=(await tx.query('SELECT id,account_external_id,read_mode,scope_json,secret_ref FROM connections WHERE org_id=$1 AND id=$2',[ctx.orgId,current.connection_id])).rows[0];
+        if(!connection)fail('connection_not_found',404);
+        data.configuration_hash=stableHash({connection_id:connection.id,account_external_id:connection.account_external_id,read_mode:connection.read_mode,scope_json:connection.scope_json,secret_ref:connection.secret_ref});
+        data.adapter_version=command.input_ref.adapter_version;data.session_version_after=number(current.session_version);
+        if (connection.read_mode === 'mock' || connection.account_external_id !== current.account_external_id) fail('connection_account_mismatch');
+        const capabilityRegistration=command.input_ref.refs.capability_artifact === 'server-selected';
+        await tx.query("UPDATE connections SET access_status=CASE WHEN $4 THEN access_status WHEN capabilities ? 'platform_execution' OR capabilities_verified_at IS NULL THEN 'verifying' ELSE access_status END,health='healthy',capabilities=CASE WHEN NOT $4 AND capabilities ? 'platform_execution' THEN '{}'::jsonb ELSE capabilities END,capabilities_verified_at=CASE WHEN NOT $4 AND capabilities ? 'platform_execution' THEN NULL ELSE capabilities_verified_at END,last_success_at=$3,last_error_code=NULL,updated_at=$3 WHERE org_id=$1 AND id=$2", [ctx.orgId, connection.id, clock().toISOString(),capabilityRegistration]);
+        if (command.input_ref.refs.capability_artifact === 'server-selected') {
+          if (!capabilityProof?.verified || !capabilityProof.artifactId || capabilityProof.orgId !== ctx.orgId || capabilityProof.accountId !== current.id || capabilityProof.connectionId !== connection.id || capabilityProof.externalAccountId !== current.account_external_id || capabilityProof.configurationHash !== platformConfigurationHash(connection) || capabilityProof.adapterVersion !== command.input_ref.adapter_version || capabilityProof.sessionVersion !== number(command.session_version) || !capabilityProof.acceptedAt || !Number.isFinite(Date.parse(capabilityProof.acceptedAt)) || Date.parse(capabilityProof.acceptedAt) < clock().getTime()-86400_000 || Date.parse(capabilityProof.acceptedAt)>clock().getTime()+60_000 || !Array.isArray(capabilityProof.capabilityEvidence) || !capabilityProof.capabilities.length || capabilityProof.capabilities.some(cap => !capabilityProof.capabilityEvidence!.some(proof => proof.capability === cap && proof.externalAccountId === current.account_external_id && /^[a-f0-9]{64}$/.test(proof.sha256) && ['api_readback','browser_readback'].includes(proof.kind) && Number.isFinite(Date.parse(proof.capturedAt)) && Date.parse(proof.capturedAt)>=clock().getTime()-86400_000 && Date.parse(proof.capturedAt)<=clock().getTime()+60_000))) fail('capability_artifact_verification_failed');
+          const accepted = { ...capabilityProof, registrationCommandId: command.id, sessionVersion: number(current.session_version) };
+          await tx.query("UPDATE connections SET access_status='connected',capabilities=$3::jsonb,capabilities_verified_at=$4,updated_at=$4 WHERE org_id=$1 AND id=$2", [ctx.orgId, connection.id, JSON.stringify({ ...Object.fromEntries(capabilityProof.capabilities.map(cap => [cap, true])), verified_capabilities: capabilityProof.capabilities, platform_execution: accepted }), clock().toISOString()]);
+          data.capability_status='verified';data.capability_artifact_id=capabilityProof.artifactId;
+          await audit(ctx,tx,'browser.capabilities.verified','platform_account',String(current.id),{commandId:command.id,artifactId:capabilityProof.artifactId,configurationHash:capabilityProof.configurationHash,capabilities:capabilityProof.capabilities});
+        }
+      }
+      const safe = result.status === "verified" ? { status: result.status, evidence: safeEvidence, data } : result.status === "submitted" || result.status === "in_review" ? { status: result.status, externalId: result.externalId, ...(result.evidenceRef ? { evidenceRef: result.evidenceRef } : {}), ...(safeEvidence?{evidence:safeEvidence}:{}), data } : { status: result.status, reason: /^[A-Za-z0-9_.:-]{1,100}$/.test(result.reason) ? result.reason : "adapter_reason_redacted", ...(result.status === "rejected" || result.status === "unknown" ? { externalId: result.externalId, evidenceRef: result.evidenceRef, ...(safeEvidence?{evidence:safeEvidence}:{}), data } : {}) };
       await tx.query("UPDATE browser_commands SET state=$3,result_ref=$4,finished_at=$5,lease_owner=NULL,lease_until=NULL,updated_at=$5 WHERE org_id=$1 AND id=$2", [ctx.orgId, id, state, JSON.stringify(safe), clock().toISOString()]);
-      if (command.command_type === "reconcile" && state === "succeeded") {
+      if (command.command_type === "reconcile" && ["succeeded", "unknown", "failed"].includes(state)) {
         const originalId = command.input_ref.refs.reconcile_command_id;
         if (!originalId) fail("reconciliation_reference_missing");
         const original = await get(originalId, tx);
         if (original.state !== "unknown" || original.platform_account_id !== command.platform_account_id || original.execution_action_id !== command.execution_action_id) fail("reconciliation_target_mismatch");
-        await tx.query("UPDATE browser_commands SET state='succeeded',result_ref=$3,finished_at=$4,updated_at=$4 WHERE org_id=$1 AND id=$2 AND state='unknown'", [ctx.orgId, originalId, JSON.stringify({ status: "verified", reconciliationCommandId: id, evidence: safeEvidence }), clock().toISOString()]);
+        await tx.query("UPDATE browser_commands SET state=$3,result_ref=$4,finished_at=$5,updated_at=$5 WHERE org_id=$1 AND id=$2 AND state='unknown'", [ctx.orgId, originalId, state, JSON.stringify({ ...safe, reconciliationCommandId: id }), clock().toISOString()]);
       }
       await audit(ctx, tx, `browser.command.${state}`, "browser_command", id, { status: result.status, fencingToken: token });
       return get(id, tx);
@@ -215,18 +265,33 @@ export function createBrowserService(ctx: ServiceContext, dependencies: BrowserS
     const token = number(command.fencing_token);
     if (ctx.mode !== "live") return finish(id, owner, token, { status: "blocked", reason: "mock_mode_external_execution_disabled" });
     const target = command.platform_account_id ? (await ctx.db.query<AccountRow>("SELECT * FROM platform_accounts WHERE org_id=$1 AND id=$2", [ctx.orgId, command.platform_account_id])).rows[0] : null;
+    const sourceConnection = !target && command.connection_id ? (await ctx.db.query("SELECT account_external_id FROM connections WHERE org_id=$1 AND id=$2", [ctx.orgId, command.connection_id])).rows[0] : null;
     const adapter = target ? dependencies.adapters.get(target.channel_id ?? target.provider) : dependencies.sourceAdapter;
     if (!adapter || adapter.mode !== "live") return finish(id, owner, token, { status: "blocked", reason: "integration_required" });
     const check = () => ctx.db.transaction(async (tx) => { await assertLease(tx, id, owner, token); });
-    const executionContext: PlatformExecutionContext = { orgId: ctx.orgId, accountId: command.platform_account_id ?? command.connection_id!, externalAccountId: target?.account_external_id ?? "source", adapterVersion: command.input_ref.adapter_version, sessionVersion: number(command.session_version), fencingToken: token, commandId: id, mode: ctx.mode, assertLease: check };
+    const executionContext: PlatformExecutionContext = { orgId: ctx.orgId, accountId: command.platform_account_id ?? command.connection_id!, externalAccountId: target?.account_external_id ?? String(sourceConnection?.account_external_id ?? "source"), adapterVersion: command.input_ref.adapter_version, sessionVersion: number(command.session_version), fencingToken: token, commandId: id, mode: ctx.mode, assertLease: check, markMutationStart:()=>{effectMayHaveStarted=true;}, recordSubmission: receipt => ctx.db.transaction(async tx => { await assertLease(tx, id, owner, token); await tx.query("UPDATE browser_commands SET result_ref=$3,updated_at=$4 WHERE org_id=$1 AND id=$2", [ctx.orgId, id, JSON.stringify({ status: "submitted", externalId: receipt.externalId, evidenceRef: receipt.evidenceRef, data: safePlatformData({ ...receipt.data, external_id: receipt.externalId }) }), clock().toISOString()]); }) };
     const action = { commandType: command.command_type, inputRef: command.input_ref.refs, ...(command.execution_action_id ? { actionId: command.execution_action_id } : {}) };
     let effectMayHaveStarted = false;
+    let capabilityProof: CapabilityVerification | undefined;
     try {
-      if (!dependencies.withProfile) throw new ConnectorBlockedError("encrypted_profile_not_configured");
-      const result = await dependencies.withProfile({ orgId: ctx.orgId, accountId: executionContext.accountId, fencingToken: token, channelId: adapter.channelId }, async (browser) => { await check(); effectMayHaveStarted = writeTypes.has(command.command_type); return adapter.execute({ ...executionContext, browserSession: browser }, action); });
-      return await finish(id, owner, token, result);
+      const run = async (browser?: unknown): Promise<PlatformResult> => {
+        await check(); const runtimeContext={ ...executionContext, ...(browser ? { browserSession: browser } : {}) };
+        if(command.command_type==='session_verify'&&command.input_ref.refs.capability_artifact==='server-selected'){
+          capabilityProof=await adapter.verify({...runtimeContext,capabilityArtifactRequested:true});
+          return {status:'verified',evidence:capabilityProof};
+        }
+        return adapter.execute(runtimeContext, action);
+      };
+      let result: PlatformResult;
+      if (adapter.profileRequired === false) result = await run();
+      else {
+        if (!dependencies.withProfile) throw new ConnectorBlockedError("encrypted_profile_not_configured");
+        result = await dependencies.withProfile({ orgId: ctx.orgId, accountId: executionContext.accountId, fencingToken: token, channelId: adapter.channelId, ...(adapter.allowedOrigins ? { allowedOrigins: adapter.allowedOrigins } : {}) }, browser => run(browser));
+      }
+      if (command.command_type === "source_fetch" && result.status === "verified" && result.data && dependencies.captureSource) await dependencies.captureSource(result.data);
+      return await finish(id, owner, token, result, capabilityProof);
     } catch (error) {
-      const reason = error instanceof ConnectorBlockedError ? error.code : "adapter_execution_failed";
+      const reason = error instanceof ConnectorBlockedError || error instanceof DomainError ? error.code : "adapter_execution_failed";
       return finish(id, owner, token, { status: effectMayHaveStarted ? "unknown" : "blocked", reason });
     }
   }
@@ -241,7 +306,7 @@ export function createBrowserService(ctx: ServiceContext, dependencies: BrowserS
     const original = await get(id);
     if (original.state !== "unknown") fail("command_not_unknown");
     if (!original.platform_account_id) fail("source_reconciliation_not_implemented", 503);
-    return enqueue({ command_type: "reconcile", idempotency_key: `reconcile:${id}`, platform_account_id: original.platform_account_id, ...(original.execution_action_id ? { execution_action_id: original.execution_action_id } : {}), adapter_version: original.input_ref.adapter_version, input_ref: { reconcile_command_id: id } });
+    return enqueue({ command_type: "reconcile", idempotency_key: `reconcile:${id}:${Math.floor(clock().getTime() / 60_000)}`, platform_account_id: original.platform_account_id, ...(original.execution_action_id ? { execution_action_id: original.execution_action_id } : {}), adapter_version: original.input_ref.adapter_version, input_ref: { reconcile_command_id: id } });
   }
   async function cancel(id: string) {
     requireRole(ctx, "owner", "admin", "marketer", "service");
@@ -287,7 +352,7 @@ export function createBrowserService(ctx: ServiceContext, dependencies: BrowserS
       return session;
     });
   }
-  async function completeLogin(sessionId: string, accountId: string, verifyActualSession: () => Promise<VerificationEvidence>) {
+  async function completeLogin(sessionId: string, accountId: string, verifyActualSession: () => Promise<VerificationEvidence>, afterVerified?: (tx:SqlExecutor,details:{proof:VerificationEvidence;sessionVersion:number})=>Promise<void>) {
     await authorizeInteraction(sessionId, accountId);
     if (ctx.mode !== "live") fail("real_verification_required", 503);
     const proof = await verifyActualSession();
@@ -298,7 +363,9 @@ export function createBrowserService(ctx: ServiceContext, dependencies: BrowserS
       if (!session || session.user_id !== ctx.actorId || session.platform_account_id !== accountId || session.state !== "active" || new Date(session.expires_at).getTime() <= clock().getTime() || number(session.expected_session_version) !== number(target.session_version)) fail("login_interaction_denied", 403);
       if (!proof.verified || proof.externalAccountId !== target.account_external_id || !proof.evidenceRef || !Number.isFinite(Date.parse(proof.capturedAt)) || !["api_readback", "browser_readback"].includes(proof.kind) || Date.parse(proof.capturedAt) < clock().getTime() - 60_000 || Date.parse(proof.capturedAt) > clock().getTime() + 60_000) fail("real_verification_required", 503);
       await tx.query("UPDATE platform_accounts SET session_status='active',session_version=session_version+1,last_session_verified_at=$3 WHERE org_id=$1 AND id=$2", [ctx.orgId, accountId, clock().toISOString()]);
+      await tx.query("UPDATE connections SET access_status=CASE WHEN capabilities ? 'platform_execution' OR capabilities_verified_at IS NULL THEN 'verifying' ELSE access_status END,health='healthy',capabilities=CASE WHEN capabilities ? 'platform_execution' THEN '{}'::jsonb ELSE capabilities END,capabilities_verified_at=CASE WHEN capabilities ? 'platform_execution' THEN NULL ELSE capabilities_verified_at END,last_success_at=$3,last_error_code=NULL,updated_at=$3 WHERE org_id=$1 AND id=$2 AND read_mode<>'mock' AND account_external_id=$4", [ctx.orgId,target.connection_id,clock().toISOString(),proof.externalAccountId]);
       await tx.query("UPDATE login_sessions SET state='completed',completed_at=$3,result_ref=$4,version=version+1 WHERE org_id=$1 AND id=$2", [ctx.orgId, sessionId, clock().toISOString(), JSON.stringify({ evidenceRef: proof.evidenceRef, externalAccountId: proof.externalAccountId })]);
+      await afterVerified?.(tx,{proof,sessionVersion:number(target.session_version)+1});
       await audit(ctx, tx, "browser.login.completed", "login_session", sessionId, { accountId, evidenceRef: proof.evidenceRef });
       return { id: sessionId, verified: true, sessionVersion: number(target.session_version) + 1 };
     });

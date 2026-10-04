@@ -1,11 +1,19 @@
-import {validateAiOutput, aiOutputHash, ContractValidationError, type AiOutput, type AiSemanticContext} from '@boran/contracts';
-export interface AiRequest {workflow: AiOutput['workflow']; context: AiSemanticContext; input: unknown}
-export interface AiGatewayResult {output: AiOutput; metadata: {mode: 'mock' | 'real'; simulation: boolean; schema_version: 2; model: string; output_hash: string}}
-export interface AiGateway {readonly mode: 'mock' | 'real'; generate(request: AiRequest): Promise<AiGatewayResult>}
-export class AiNotConfiguredError extends Error {readonly code = 'AI_NOT_CONFIGURED'; readonly status = 503;}
+import {validateAiOutput, aiOutputHash, ContractValidationError} from '@boran/contracts';
+import {assertSafeAiValue, aiInputHash} from './privacy';
+import {AiNotConfiguredError, type AiRequest, type AiGatewayResult, type AiGateway, type AiTransport} from './types';
+import {DeepSeekAiGateway, type RuntimeAiOptions} from './deepseek';
+export * from './types';
+export * from './privacy';
+export * from './config';
+export * from './deepseek';
+export * from './evidence';
+export * from './limits';
+export * from './run-metadata';
+export {AI_PROMPT_VERSION, workflowOutputSchema} from './prompts';
 export class UnconfiguredAiGateway implements AiGateway {
   readonly mode = 'real' as const;
-  async generate(_request: AiRequest): Promise<AiGatewayResult> {throw new AiNotConfiguredError('真实模型网关尚未配置；没有模拟回退');}
+  constructor(private readonly reason = '真实模型网关尚未配置；没有模拟回退') {}
+  async generate(_request: AiRequest): Promise<AiGatewayResult> {throw new AiNotConfiguredError(this.reason);}
 }
 export class MockAiGateway implements AiGateway {
   readonly mode = 'mock' as const;
@@ -17,25 +25,29 @@ export class MockAiGateway implements AiGateway {
     return {output: parsed, metadata: {mode: 'mock', simulation: true, schema_version: 2, model: 'boran-mock-v2', output_hash: aiOutputHash(parsed)}};
   }
 }
-export type AiTransport = (request: AiRequest) => Promise<unknown>;
+/** Retained injection seam for engineering tests and integrations; it is not proof of a real provider call. */
 export class ConfiguredAiGateway implements AiGateway {
   readonly mode = 'real' as const;
   constructor(private readonly transport: AiTransport, private readonly model: string) {if (!model.trim()) throw new AiNotConfiguredError('模型名称不能为空');}
   async generate(request: AiRequest): Promise<AiGatewayResult> {
-    // The transport sees a service-constructed input; contacts and secrets are rejected before any provider call.
-    const sensitiveKeys=new Set(['authorization','cookie','cookies','setcookie','session','sessiontoken','sessioncookie','accesstoken','refreshtoken','apikey','password','pwd','clientsecret','privatekey','credentials','secret','secretref']);
-    function safe(value:unknown):void {
-      if(Array.isArray(value)){value.forEach(safe);return;}
-      if(value&&typeof value==='object'){for(const [key,entry] of Object.entries(value)){if(sensitiveKeys.has(key.toLowerCase().replace(/[^a-z0-9]/g,'')))throw new AiNotConfiguredError('模型输入必须脱敏且不得含凭据');safe(entry);}return;}
-      if(typeof value==='string' && /\b1[3-9]\d{9}\b|[\w.+-]+@[\w.-]+\.[a-z]{2,}|\bBearer\s+[a-z0-9._-]+/i.test(value))throw new AiNotConfiguredError('模型输入必须脱敏且不得含凭据');
-      if(typeof value==='number'&& /^1[3-9]\d{9}$/.test(String(value)))throw new AiNotConfiguredError('模型输入必须脱敏且不得含凭据');
-    }
-    safe(request);
+    assertSafeAiValue(request);
     const output = validateAiOutput(await this.transport(request), request.context);
-    if(output.workflow!==request.workflow)throw new ContractValidationError('模型输出流程与当前请求不一致');
-    return {output, metadata: {mode: 'real', simulation: false, schema_version: 2, model: this.model, output_hash: aiOutputHash(output)}};
+    if (output.workflow !== request.workflow) throw new ContractValidationError('模型输出流程与当前请求不一致');
+    return {output, metadata: {mode: 'real', simulation: false, schema_version: 2, provider: 'injected', model: this.model, input_hash: aiInputHash(request), output_hash: aiOutputHash(output)}};
   }
 }
 export function createAiGateway(config: {aiMode: 'mock' | 'real'; transport?: AiTransport; model?: string}): AiGateway {
   return config.aiMode === 'mock' ? new MockAiGateway() : config.transport && config.model ? new ConfiguredAiGateway(config.transport, config.model) : new UnconfiguredAiGateway();
+}
+/** Explicit mock preserves historical simulations; the deployable provider never falls back to it. */
+export function createRuntimeAiGateway(options: RuntimeAiOptions = {}): AiGateway {
+  const env = options.env ?? process.env;
+  if (env.AI_MODE === 'mock') return new MockAiGateway();
+  try {return new DeepSeekAiGateway(options);} catch (error) {
+    if (error instanceof AiNotConfiguredError) return new UnconfiguredAiGateway(error.message);
+    throw error;
+  }
+}
+export async function verifyRuntimeAiModels(options: RuntimeAiOptions, orgId: string): Promise<Awaited<ReturnType<DeepSeekAiGateway['verifyModels']>>> {
+  return new DeepSeekAiGateway(options).verifyModels(orgId);
 }

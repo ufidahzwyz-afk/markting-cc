@@ -629,7 +629,9 @@ export interface Topic {
    */
   claim_keys: ProposalKey[];
   /**
-   * @minItems 1
+   * 私有候选选题可为空；为空时auto_schedule_candidate=false、proposed_scheduled_at=null，并明确登记账号缺口。实际排期仍需有效账号、档案和持续规则。
+   *
+   * @minItems 0
    * @maxItems 20
    */
   targets: Target[];

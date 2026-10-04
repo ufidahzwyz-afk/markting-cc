@@ -26,9 +26,20 @@ const verifyObject: AssetVerifier = async (asset) => {
 function only(body: Record<string, unknown>, keys: string[]) { if (Object.keys(body).some((key) => !keys.includes(key))) throw new DomainError("INVALID_REQUEST", 400, "请求包含不允许修改的字段"); }
 function text(body: Record<string, unknown>, key: string) { if (typeof body[key] !== "string" || !body[key]) throw new DomainError("INVALID_REQUEST", 400, `${key} 必填`); return body[key] as string; }
 function contentVersion(request: Request) { const header = request.headers.get("if-match")?.replaceAll('"', ""); const value = Number(header); if (!header || !Number.isSafeInteger(value) || value < 0) throw new DomainError("VERSION_REQUIRED", 428, "内容编辑需要 If-Match 正文版本（首次为 0）"); return value; }
+function mockReadScope(ctx:ServiceContext,table:string):string {
+  if(ctx.mode==='live')return 'true';
+  if(['content_items','topics','evidence_claims'].includes(table))return `COALESCE(${table}.execution_mode,'mock')='mock'`;
+  const itemField=table==='content_versions'||table==='pages'||table==='content_variants'?'content_item_id':null;
+  if(itemField)return `EXISTS(SELECT 1 FROM content_items mi WHERE mi.org_id=${table}.org_id AND mi.id=${table}.${itemField} AND COALESCE(mi.execution_mode,'mock')='mock')`;
+  if(table==='platform_accounts')return `EXISTS(SELECT 1 FROM connections mc WHERE mc.org_id=${table}.org_id AND mc.id=${table}.connection_id AND mc.read_mode='mock')`;
+  if(table==='platform_profiles')return `EXISTS(SELECT 1 FROM platform_accounts ma JOIN connections mc ON mc.org_id=ma.org_id AND mc.id=ma.connection_id WHERE ma.org_id=${table}.org_id AND ma.id=${table}.platform_account_id AND mc.read_mode='mock')`;
+  if(table==='platform_profile_versions')return `EXISTS(SELECT 1 FROM platform_profiles mp JOIN platform_accounts ma ON ma.org_id=mp.org_id AND ma.id=mp.platform_account_id JOIN connections mc ON mc.org_id=ma.org_id AND mc.id=ma.connection_id WHERE mp.org_id=${table}.org_id AND mp.id=${table}.profile_id AND mc.read_mode='mock')`;
+  if(table==='publish_jobs')return `EXISTS(SELECT 1 FROM content_variants mv JOIN content_items mi ON mi.org_id=mv.org_id AND mi.id=mv.content_item_id WHERE mv.org_id=${table}.org_id AND mv.id=${table}.content_variant_id AND COALESCE(mi.execution_mode,'mock')='mock')`;
+  return 'true';
+}
 async function readOne(ctx: ServiceContext, table: string, id: string) {
   if (!/^[0-9a-f-]{36}$/i.test(id)) throw new DomainError("INVALID_ID", 400, "资源 ID 无效");
-  const row = (await ctx.db.query(`SELECT * FROM ${table} WHERE org_id=$1 AND id=$2`, [ctx.orgId, id])).rows[0]; if (!row) throw new DomainError("NOT_FOUND", 404, "组织内资源不存在"); return row;
+  const row = (await ctx.db.query(`SELECT * FROM ${table} WHERE org_id=$1 AND id=$2 AND ${mockReadScope(ctx,table)}`, [ctx.orgId, id])).rows[0]; if (!row) throw new DomainError("NOT_FOUND", 404, "组织内资源不存在"); return row;
 }
 function limit(request: Request) { const input = Number(new URL(request.url).searchParams.get("limit") ?? 50); return Number.isInteger(input) && input > 0 ? Math.min(input, 200) : 50; }
 
@@ -37,7 +48,7 @@ export async function handleContent(ctx: ServiceContext, request: Request, segme
   if (!["content", "pages", "platform-profiles", "content-variants", "publish-jobs", "media-assets"].includes(resource ?? "")) return null;
   requireRole(ctx, "owner", "marketer", "reviewer", "admin");
   if (method === "GET" && resource === "content" && !id) {
-    const rows = await ctx.db.query("SELECT i.*,COALESCE(v.version_no,0)::integer AS version,v.id AS latest_version_id,v.review_status FROM content_items i LEFT JOIN LATERAL (SELECT id,version_no,review_status FROM content_versions WHERE org_id=i.org_id AND content_item_id=i.id ORDER BY version_no DESC LIMIT 1) v ON true WHERE i.org_id=$1 AND i.deleted_at IS NULL ORDER BY i.updated_at DESC,i.id LIMIT $2", [ctx.orgId, limit(request)]); return jsonData(rows.rows, 200, { mode: ctx.mode });
+    const rows = await ctx.db.query("SELECT i.*,COALESCE(v.version_no,0)::integer AS version,v.id AS latest_version_id,v.review_status FROM content_items i LEFT JOIN LATERAL (SELECT id,version_no,review_status FROM content_versions WHERE org_id=i.org_id AND content_item_id=i.id ORDER BY version_no DESC LIMIT 1) v ON true WHERE i.org_id=$1 AND i.deleted_at IS NULL AND ($3::text='live' OR COALESCE(i.execution_mode,'mock')='mock') ORDER BY i.updated_at DESC,i.id LIMIT $2", [ctx.orgId, limit(request),ctx.mode]); return jsonData(rows.rows, 200, { mode: ctx.mode });
   }
   if (method === "POST" && resource === "content" && !id) {
     only(body, ["title", "kind", "business_line", "topic_id", "task_id"]);
@@ -72,7 +83,7 @@ export async function handleContent(ctx: ServiceContext, request: Request, segme
     return databaseCommand(ctx, request, body, 200, (txCtx) => reviewContentVersion(txCtx, operation, input));
   }
   if (resource === "pages" && !id) {
-    if (method === "GET") return jsonData((await ctx.db.query("SELECT * FROM pages WHERE org_id=$1 ORDER BY updated_at DESC,id LIMIT $2", [ctx.orgId, limit(request)])).rows, 200, { mode: ctx.mode });
+    if (method === "GET") return jsonData((await ctx.db.query(`SELECT * FROM pages WHERE org_id=$1 AND ${mockReadScope(ctx,'pages')} ORDER BY updated_at DESC,id LIMIT $2`, [ctx.orgId, limit(request)])).rows, 200, { mode: ctx.mode });
     if (method === "POST") { const input = validateApiRequest("PageCreate", body); return databaseCommand(ctx, request, body, 201, (txCtx) => createPage(txCtx, input as PageInput, policy(ctx))); }
   }
   if (resource === "pages" && id) {
@@ -87,7 +98,7 @@ export async function handleContent(ctx: ServiceContext, request: Request, segme
     if (method === "POST" && operation === "rollback") { only(body, ["action_id", "release_id"]); return jsonData(await rollbackPage(ctx, { pageId: id, releaseId: text(body, "release_id"), actionId: text(body, "action_id"), expectedVersion: expectedVersion(request), verifyObject }, policy(ctx)), 202, { mode: ctx.mode }); }
   }
   if (resource === "platform-profiles" && !id) {
-    if (method === "GET") return jsonData((await ctx.db.query("SELECT * FROM platform_profiles WHERE org_id=$1 ORDER BY updated_at DESC,id LIMIT $2", [ctx.orgId, limit(request)])).rows, 200, { mode: ctx.mode });
+    if (method === "GET") return jsonData((await ctx.db.query(`SELECT * FROM platform_profiles WHERE org_id=$1 AND ${mockReadScope(ctx,'platform_profiles')} ORDER BY updated_at DESC,id LIMIT $2`, [ctx.orgId, limit(request)])).rows, 200, { mode: ctx.mode });
     if (method === "POST") { only(body, ["platform_account_id", "name"]); return databaseCommand(ctx, request, body, 201, (txCtx) => createPlatformProfile(txCtx, { platform_account_id: text(body, "platform_account_id"), name: text(body, "name") })); }
   }
   if (resource === "platform-profiles" && id) {
@@ -97,12 +108,12 @@ export async function handleContent(ctx: ServiceContext, request: Request, segme
     if (operation === "calibrate" && method === "POST") { only(body, []); return databaseCommand(ctx, request, body, 200, (txCtx) => calibratePlatformProfile(txCtx, id, expectedVersion(request))); }
   }
   if (resource === "content-variants") {
-    if (method === "GET" && !id) return jsonData((await ctx.db.query("SELECT * FROM content_variants WHERE org_id=$1 ORDER BY created_at DESC,id LIMIT $2", [ctx.orgId, limit(request)])).rows, 200, { mode: ctx.mode });
+    if (method === "GET" && !id) return jsonData((await ctx.db.query(`SELECT * FROM content_variants WHERE org_id=$1 AND ${mockReadScope(ctx,'content_variants')} ORDER BY created_at DESC,id LIMIT $2`, [ctx.orgId, limit(request)])).rows, 200, { mode: ctx.mode });
     if (method === "GET" && id) return jsonData(await readOne(ctx, "content_variants", id), 200, { mode: ctx.mode });
     if (method === "POST" && !id) { only(body, ["mother_content_version_id", "content_item_id", "platform_account_id", "platform_profile_version_id", "format", "title", "body", "cta", "target_url", "claim_ids", "asset_ids", "ai_generated", "ai_label_applied"]); if (!Array.isArray(body.claim_ids) || !Array.isArray(body.asset_ids)) throw new DomainError("INVALID_REQUEST", 400, "素材与事实引用必须为数组"); return jsonData(await createPlatformVariant(ctx, body as unknown as PlatformVariantInput, policy(ctx), verifyObject), 201, { mode: ctx.mode }); }
   }
   if (resource === "publish-jobs") {
-    if (method === "GET" && !id) return jsonData((await ctx.db.query("SELECT id,execution_action_id AS action_id,platform_account_id,content_variant_id,scheduled_at,delivery_state,external_id,published_url,verification_status,verified_at,submission_receipt,verification_evidence_ref FROM publish_jobs WHERE org_id=$1 ORDER BY scheduled_at DESC,id LIMIT $2", [ctx.orgId, limit(request)])).rows, 200, { mode: ctx.mode });
+    if (method === "GET" && !id) return jsonData((await ctx.db.query(`SELECT id,execution_action_id AS action_id,platform_account_id,content_variant_id,scheduled_at,delivery_state,external_id,published_url,verification_status,verified_at,submission_receipt,verification_evidence_ref FROM publish_jobs WHERE org_id=$1 AND ${mockReadScope(ctx,'publish_jobs')} ORDER BY scheduled_at DESC,id LIMIT $2`, [ctx.orgId, limit(request)])).rows, 200, { mode: ctx.mode });
     if (method === "GET" && id) return jsonData(await readOne(ctx, "publish_jobs", id), 200, { mode: ctx.mode });
     if (method === "POST" && !id) { const input = validateApiRequest("PublishJobCreate", body); return jsonData(await createPublishJob(ctx, { ...input, idempotency_key: idempotencyKey(request) }, verifyObject), 202, { mode: ctx.mode }); }
   }

@@ -29,9 +29,9 @@ export async function scheduleRun(db: Database, input: WorkflowInput): Promise<R
 }
 async function serviceAudit(tx:SqlExecutor,orgId:string,action:string,runId:string,details:unknown):Promise<void>{await tx.query("INSERT INTO audit_logs(id,org_id,actor_type,actor_id,action,target_type,target_id,request_id,details) VALUES($1,$2,'service','persistent-worker',$3,'workflow_run',$4,$5,$6)",[randomUUID(),orgId,action,runId,randomUUID(),JSON.stringify(details)]);}
 
-export async function recoverExpiredSteps(db:Database):Promise<number>{
+export async function recoverExpiredSteps(db:Database,orgId?:string):Promise<number>{
   return db.transaction(async(tx)=>{
-    const unsafe=await tx.query("UPDATE workflow_steps SET state='unknown',fencing_token=fencing_token+1,lease_owner=NULL,lease_until=NULL,error=$1 WHERE state='running' AND external_write AND lease_until<=now() RETURNING org_id,run_id",[JSON.stringify({code:"EXTERNAL_RESULT_UNKNOWN",requires:"reconcile"})]);
+    const unsafe=await tx.query("UPDATE workflow_steps SET state='unknown',fencing_token=fencing_token+1,lease_owner=NULL,lease_until=NULL,error=$1 WHERE state='running' AND external_write AND lease_until<=now() AND ($2::uuid IS NULL OR org_id=$2) RETURNING org_id,run_id",[JSON.stringify({code:"EXTERNAL_RESULT_UNKNOWN",requires:"reconcile"}),orgId??null]);
     for(const step of unsafe.rows)await tx.query("UPDATE workflow_runs SET status='needs_human',lease_until=NULL,updated_at=now() WHERE org_id=$1 AND id=$2",[step.org_id,step.run_id]);
     return unsafe.rowCount;
   });
@@ -40,7 +40,7 @@ export async function claimStep(db:Database,options:{workerId:string;orgId?:stri
   const seconds=options.leaseSeconds??300,modes=options.modes??["mock"];
   if(!options.workerId||options.workerId.length>200||!Number.isInteger(seconds)||seconds<1||seconds>900||modes.some((m)=>!["mock","read_only"].includes(m)))throw new Error("Invalid claim options");
   return db.transaction(async(tx)=>{
-    const row=(await tx.query(`SELECT s.*,r.kind FROM workflow_steps s JOIN workflow_runs r ON r.org_id=s.org_id AND r.id=s.run_id WHERE ($1::uuid IS NULL OR s.org_id=$1) AND s.execution_mode=ANY($2::text[]) AND NOT s.external_write AND r.status IN ('queued','running') AND (s.state='queued' OR (s.state='running' AND s.lease_until<=now())) AND NOT EXISTS(SELECT 1 FROM workflow_steps prior WHERE prior.org_id=s.org_id AND prior.run_id=s.run_id AND prior.ordinal<s.ordinal AND prior.state<>'succeeded') ORDER BY s.created_at,s.ordinal,s.id FOR UPDATE OF s SKIP LOCKED LIMIT 1`,[options.orgId??null,modes])).rows[0];
+    const row=(await tx.query(`SELECT s.*,r.kind FROM workflow_steps s JOIN workflow_runs r ON r.org_id=s.org_id AND r.id=s.run_id WHERE ($1::uuid IS NULL OR s.org_id=$1) AND s.execution_mode=ANY($2::text[]) AND NOT s.external_write AND r.status IN ('queued','running') AND (s.state='queued' AND s.next_attempt_at<=now() OR (s.state='running' AND s.lease_until<=now())) AND NOT EXISTS(SELECT 1 FROM workflow_steps prior WHERE prior.org_id=s.org_id AND prior.run_id=s.run_id AND prior.ordinal<s.ordinal AND prior.state<>'succeeded') ORDER BY s.created_at,s.ordinal,s.id FOR UPDATE OF s SKIP LOCKED LIMIT 1`,[options.orgId??null,modes])).rows[0];
     if(!row)return null;
     const claimed=(await tx.query("UPDATE workflow_steps SET state='running',attempts=attempts+1,lease_owner=$1,fencing_token=fencing_token+1,lease_until=now()+($2::text||' seconds')::interval,heartbeat_at=now(),updated_at=now() WHERE org_id=$3 AND id=$4 RETURNING *",[options.workerId,seconds,row.org_id,row.id])).rows[0]!;
     await tx.query("UPDATE workflow_runs SET status='running',started_at=COALESCE(started_at,now()),heartbeat_at=now(),lease_until=$1,updated_at=now() WHERE org_id=$2 AND id=$3",[claimed.lease_until,claimed.org_id,claimed.run_id]);
@@ -67,9 +67,9 @@ export async function completeStep(db:Database,claim:StepClaim,output:Record<str
     await serviceAudit(tx,claim.orgId,"workflow.step_completed",claim.runId,{stepKey:claim.stepKey,mock:claim.mode==="mock"});
   });
 }
-export async function dispatchWorkflowOutbox(db:Database):Promise<number>{
+export async function dispatchWorkflowOutbox(db:Database,orgId?:string):Promise<number>{
   return db.transaction(async(tx)=>{
-    const events=(await tx.query("SELECT * FROM outbox_events WHERE event_type='workflow.queued' AND dispatched_at IS NULL AND next_attempt_at<=now() ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 50")).rows;
+    const events=(await tx.query("SELECT * FROM outbox_events WHERE event_type='workflow.queued' AND dispatched_at IS NULL AND next_attempt_at<=now() AND ($1::uuid IS NULL OR org_id=$1) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 50",[orgId??null])).rows;
     for(const event of events){if(!(await tx.query("SELECT id FROM workflow_runs WHERE org_id=$1 AND id=$2",[event.org_id,event.aggregate_id])).rows.length)throw new Error("Outbox workflow reference is invalid");await tx.query("UPDATE outbox_events SET dispatched_at=now(),attempts=attempts+1 WHERE org_id=$1 AND id=$2",[event.org_id,event.id]);}return events.length;
   });
 }
@@ -85,3 +85,19 @@ export async function failStep(db:Database,claim:StepClaim,failure:{code:string;
   });
 }
 export async function needsHuman(db:Database,claim:StepClaim,code:string):Promise<void>{await failStep(db,claim,{code,needsHuman:true});}
+
+/** Delay only a durable proof that no paid model attempt was submitted. Never clear an ambiguous calling marker. */
+export async function deferStep(db:Database,claim:StepClaim,failure:{limitKind:'minute'|'day';retryAfter:string}):Promise<void>{
+  const retryTime=Date.parse(failure.retryAfter);
+  if(!['minute','day'].includes(failure.limitKind)||!Number.isFinite(retryTime)||new Date(retryTime).toISOString()!==failure.retryAfter||retryTime>Date.now()+86400000+60000)throw new LeaseError('Invalid safe model delay');
+  await db.transaction(async tx=>{
+    const row=(await tx.query("SELECT * FROM workflow_steps WHERE org_id=$1 AND id=$2 AND run_id=$3 FOR UPDATE",[claim.orgId,claim.stepId,claim.runId])).rows[0];
+    if(!row||String(row.fencing_token)!==claim.token||row.lease_owner!==claim.workerId||row.state!=='running'||!row.lease_until||Date.parse(String(row.lease_until))<=Date.now())throw new LeaseError('Stale worker cannot defer a model call');
+    const execution=(row.output_ref as Record<string,unknown>|null)?._ai_execution as Record<string,unknown>|undefined;
+    if(claim.mode!=='read_only'||row.external_write||execution?.status!=='safe_not_submitted'||execution.limit_kind!==failure.limitKind||execution.retry_after!==failure.retryAfter||typeof execution.request_hash!=='string'||!/^[a-f0-9]{64}$/.test(execution.request_hash))throw new LeaseError('Model delay lacks a durable unsubmitted receipt');
+    const safeError={code:'AI_CALL_LIMIT',safe_not_submitted:true,limit_kind:failure.limitKind,retry_after:failure.retryAfter};
+    await tx.query("UPDATE workflow_steps SET state='queued',next_attempt_at=GREATEST($1::timestamptz,now()),error=$2,lease_owner=NULL,lease_until=NULL,fencing_token=fencing_token+1,updated_at=now() WHERE org_id=$3 AND id=$4",[failure.retryAfter,JSON.stringify(safeError),claim.orgId,claim.stepId]);
+    await tx.query("UPDATE workflow_runs SET status='queued',error=$1,lease_until=NULL,updated_at=now() WHERE org_id=$2 AND id=$3",[JSON.stringify(safeError),claim.orgId,claim.runId]);
+    await serviceAudit(tx,claim.orgId,'workflow.model_deferred',claim.runId,{stepKey:claim.stepKey,...safeError});
+  });
+}

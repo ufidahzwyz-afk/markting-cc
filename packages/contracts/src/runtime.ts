@@ -10,7 +10,7 @@ export const CONNECTION_ACCESS_STATUSES = ['not_configured', 'verifying', 'conne
 export type ConnectionAccessStatus = typeof CONNECTION_ACCESS_STATUSES[number];
 export interface RuntimeConfig {
   appEnv: 'development' | 'test' | 'staging' | 'production';
-  authMode: 'mock' | 'oidc' | 'disabled';
+  authMode: 'mock' | 'local' | 'oidc' | 'disabled';
   aiMode: 'mock' | 'real';
   writeEnabled: boolean;
   externalWritesEnabled: boolean;
@@ -34,9 +34,10 @@ export function parseRuntimeConfig(env: Readonly<Record<string, string | undefin
     return value === 'true';
   }
   const appEnv = choice('APP_ENV', ['development', 'test', 'staging', 'production'], 'production');
-  const authMode = choice('AUTH_MODE', ['mock', 'oidc', 'disabled'], 'disabled');
+  const authMode = choice('AUTH_MODE', ['mock', 'local', 'oidc', 'disabled'], 'disabled');
   const aiMode = choice('AI_MODE', ['mock', 'real'], 'mock');
   if (authMode === 'mock' && appEnv !== 'development' && appEnv !== 'test') throw new RuntimeConfigurationError('Mock identity is permitted only in development and test');
+  if (authMode === 'local' && (!['development', 'test'].includes(appEnv) || env['BORAN_MODE'] !== 'live' || !/^[0-9a-f-]{36}$/i.test(env['BORAN_ORG_ID'] ?? ''))) throw new RuntimeConfigurationError('Local identity requires an explicit local live organization');
   if ((appEnv === 'production' || appEnv === 'staging') && authMode !== 'oidc') throw new RuntimeConfigurationError('Deployed environments require OIDC identity');
   if (authMode === 'oidc') {
     let issuer: URL;
