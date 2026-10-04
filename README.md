@@ -2,6 +2,8 @@
 
 这是产品 V1 / PRD 1.2 / 业务基线 V1.4 的本地开发测试工程。管理台已接入持久数据库：两名运营共享主题和推进任务、内容版本与官网页面、留资与线索、广告报表和复盘。后台使用持久任务、幂等键、授权复核和租约恢复。真实平台、模型网关和生产环境仍需接入及实测，工程测试通过不代表 AC35 七个完整业务日或 AC47 十六渠道已经验收。
 
+2026-10-04 已完成 Mac ARM64 安装启动现场检查；当前真实来源读取、模型洞察、自动草稿及平台执行尚未接通。下一轮优先完成真实 Drive 资料变化→DeepSeek 洞察→推荐选题→草稿，具体目标与验收见 [V1.4 真实自动化计划](docs/v14-live-automation-plan.md)。
+
 ## Mac Studio（Apple 芯片）
 
 安装 **Docker Desktop for Apple Silicon**，启动 Docker Desktop。首次下载当前集成版本：
@@ -23,7 +25,7 @@ docker compose -f infra/compose.yaml logs --tail=80 init ops public-site worker 
 - 官网服务：<http://localhost:3001>；未发布的路径返回 404。在“内容与官网”中登记并发布批准路径后可以访问。
 - 数据库、后台任务和浏览器服务位于内部网络，没有宿主公开端口。
 
-镜像不强制 amd64，会按 Apple 芯片使用 ARM64。当前执行环境已验证 Linux 容器构建、各服务启动和 PostgreSQL 备份恢复；需要在你的 Mac 上实际运行后才能确认该机器验收。建议 Docker 至少 4 CPU、8 GB 内存、30 GB 可用空间。详见 [本地运行与部署说明](infra/README.md)。
+镜像不强制 amd64，会按 Apple 芯片使用 ARM64。Linux 容器构建、各服务启动和 PostgreSQL 备份恢复已验证；2026-10-04 Mac 现场任务另验证 ARM64 镜像、五个服务运行、页面/API HTTP 200 及 Chromium profile 2/2。该记录证明本地测试运行，真实平台与持续自动化仍分别待验收。建议 Docker 至少 4 CPU、8 GB 内存、30 GB 可用空间。详见 [本地运行与部署说明](infra/README.md)。
 
 停止而保留数据：
 
